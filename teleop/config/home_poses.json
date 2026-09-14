@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "captured_on": "2026-09-13",
+  "source": "live_read_only_socketcan_feedback_requested_by_user",
+  "can_commands_sent": 0,
+  "pose_frame": "each_arm_sdk_link7_with_configured_tcp_offset",
+  "on_startup": true,
+  "joint_speed_deg_s": 20.0,
+  "tcp_speed_m_s": 0.05,
+  "angular_speed_deg_s": 20.0,
+  "timeout_s": 60.0,
+  "arrival_joint_tolerance_deg": 0.5,
+  "arrival_tcp_tolerance_m": 0.005,
+  "arrival_angular_tolerance_deg": 1.0,
+  "arrival_stable_s": 0.15,
+  "arms": {
+    "right_arm": {
+      "can_channel": "can0",
+      "controller_hand": "right",
+      "joints_deg": [2.646, 83.261, -90.751, -16.052, -0.77, -5.139, -72.295],
+      "tcp_position_m": [-0.559464545, -0.275460469, 0.195192712],
+      "tcp_rotation": [[0.012279196, -0.999229077, -0.037289055], [-0.998698676, -0.014101669, 0.049011188], [-0.049499242, 0.036638712, -0.998101914]]
+    },
+    "left_arm": {
+      "can_channel": "can1",
+      "controller_hand": "left",
+      "joints_deg": [3.676, 87.142, -95.026, 28.062, 1.843, 0.364, 64.113],
+      "tcp_position_m": [-0.558083087, 0.265841417, 0.186862586],
+      "tcp_rotation": [[-0.023231478, 0.996964569, -0.074309806], [0.997958293, 0.027549533, 0.057621774], [0.059494068, -0.072819449, -0.995569075]]
+    }
+  }
+}

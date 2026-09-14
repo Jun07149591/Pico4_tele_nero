@@ -1,0 +1,16 @@
+# Dataset-only dependency set for the OpenPI-pinned LeRobot writer.
+# Install LeRobot itself with --no-deps in setup.sh: its unused robot/training
+# dependencies target a different Torch stack from this collection environment.
+numpy==2.2.6
+torch==2.10.0
+torchvision==0.25.0
+datasets==3.6.0
+huggingface-hub==0.35.3
+pyarrow==24.0.0
+pillow==12.2.0
+jsonlines>=4,<5
+draccus==0.10.0
+einops>=0.8,<0.9
+av>=14,<17
+packaging>=24
+tqdm>=4.66

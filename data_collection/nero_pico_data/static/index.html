@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nero 数据采集</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/lucide.min.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <div class="brand"><i data-lucide="scan-line"></i><strong>Nero</strong><span>数据采集</span></div>
+    <div class="session"><span id="mode">单臂 · 右臂</span><span id="demo" hidden>模拟数据</span><span id="connection" class="status">等待连接</span></div>
+  </header>
+  <nav aria-label="工作区">
+    <button class="tab selected" data-view="capture"><i data-lucide="circle-dot"></i>采集</button>
+    <button class="tab" data-view="episodes"><i data-lucide="film"></i>片段与质检 <span id="episode-count">0</span></button>
+    <button class="tab" data-view="export"><i data-lucide="download"></i>导出</button>
+  </nav>
+  <main>
+    <div id="message" role="alert" hidden></div>
+    <section id="capture-view" class="view">
+      <div class="section-heading"><h1>实时画面</h1><div class="metrics"><span id="rate">30 Hz</span><span id="robot-age">反馈 -- ms</span></div></div>
+      <div id="live-cameras" class="camera-grid"></div>
+      <div class="record-panel">
+        <div class="task-field"><label for="task">任务指令</label><input id="task" placeholder="例如：将红色方块放入盒子" maxlength="1000" autocomplete="off"></div>
+        <div class="rate-field"><label for="capture-fps">采集频率 / Hz</label><div class="rate-control"><input id="capture-fps" type="number" min="1" max="30" step="1" value="30" inputmode="numeric" required><button id="apply-fps" class="icon-button" title="应用采集频率" aria-label="应用采集频率" disabled><i data-lucide="check"></i></button></div></div>
+        <div class="counter"><strong id="elapsed">00:00.0</strong><span id="frame-count">0 帧</span></div>
+        <div class="record-actions">
+          <button id="start" class="primary"><i data-lucide="circle"></i>开始录制</button>
+          <button id="success" class="success" disabled><i data-lucide="check"></i>成功保存</button>
+          <button id="failure" disabled><i data-lucide="x"></i>失败保存</button>
+          <button id="discard" class="icon-button" title="丢弃本段" aria-label="丢弃本段" disabled><i data-lucide="trash-2"></i></button>
+        </div>
+      </div>
+      <div class="capture-footer"><span id="record-state">待机</span><span id="readiness">等待遥操数据</span></div>
+      <div class="section-heading recent-heading"><h2>最近片段</h2><button id="all-episodes" class="text-button">全部片段<i data-lucide="arrow-right"></i></button></div>
+      <div id="recent-list" class="episode-table"></div>
+    </section>
+    <section id="episodes-view" class="view" hidden>
+      <div class="section-heading"><h1>片段与质检</h1><select id="filter" aria-label="筛选片段"><option value="all">全部片段</option><option value="unreviewed">未检查</option><option value="pass">PASS</option><option value="fail">FAIL</option></select></div>
+      <div class="replay-layout">
+        <aside id="episode-list"></aside>
+        <div id="empty-replay" class="empty">暂无选中的片段</div>
+        <div id="replay" hidden>
+          <div class="replay-heading"><h2 id="replay-task"></h2><span id="replay-outcome"></span></div>
+          <div id="replay-cameras" class="camera-grid"></div>
+          <div class="timeline"><button id="play" class="icon-button" title="播放 / 暂停" aria-label="播放 / 暂停"><i data-lucide="play"></i></button><input id="timeline" type="range" min="0" max="0" value="0" aria-label="回放帧"><output id="play-time">0 / 0</output></div>
+          <div class="review-bar"><span id="quality"></span><button id="pass" class="success"><i data-lucide="check-check"></i>PASS</button><button id="fail"><i data-lucide="x"></i>FAIL</button><button id="unreview" class="icon-button" title="重置质检" aria-label="重置质检"><i data-lucide="undo-2"></i></button></div>
+          <div class="notes-line"><label for="notes">质检备注</label><input id="notes" maxlength="4000" placeholder="备注"><button id="save-notes" class="icon-button" title="保存备注" aria-label="保存备注"><i data-lucide="save"></i></button></div>
+          <details><summary>关节与夹爪数据</summary><div id="joint-values" class="joint-table"></div></details>
+          <p id="episode-id" class="path"></p>
+        </div>
+      </div>
+    </section>
+    <section id="export-view" class="view" hidden>
+      <div class="section-heading"><h1>导出训练数据</h1><span>LeRobot v2.1 · OpenPI π0.5 · MP4</span></div>
+      <div class="export-summary"><div><span>成功且 PASS</span><strong id="accepted">0</strong></div><div><span>待检查</span><strong id="pending">0</strong></div><div><span>训练维度</span><strong id="dimensions">8</strong></div><div><span>所选频率</span><strong id="export-fps">--</strong></div></div>
+      <div class="export-toolbar"><h2>选择片段</h2><div class="export-filters"><input id="export-search" type="search" placeholder="搜索任务或片段" aria-label="搜索导出片段"><select id="export-rate-filter" aria-label="按采集频率筛选"><option value="all">全部频率</option></select></div></div>
+      <div class="export-selection"><label class="checkbox-line"><input id="select-all" type="checkbox">全选当前列表</label><span id="selection-count">已选 0 个片段</span><button id="clear-selection" class="icon-button" title="清空选择" aria-label="清空选择"><i data-lucide="list-x"></i></button></div>
+      <div class="export-columns" aria-hidden="true"><span></span><span>导出编号</span><span>原始片段 / 任务</span><span>帧数</span><span>频率</span><span>质检</span></div>
+      <div id="export-episode-list"></div>
+      <div id="selection-error" role="status" hidden></div>
+      <div class="export-form"><label for="repo-id">数据集名称</label><input id="repo-id" value="local/nero_pick_place" maxlength="100"><label id="synthetic-label" class="checkbox-line" hidden><input id="allow-synthetic" type="checkbox">导出模拟测试数据</label><button id="export-button" class="primary" disabled><i data-lucide="download"></i>导出所选片段</button></div>
+      <div id="export-status" role="status"></div>
+      <div id="export-files"></div>
+      <div class="dataset-location"><h2>原始数据目录</h2><p id="root" class="path"></p></div>
+    </section>
+  </main>
+  <footer><span>PICO 4 Ultra / XRoboToolkit / Nero</span><span id="footer-state">采集服务</span></footer>
+</body>
+</html>

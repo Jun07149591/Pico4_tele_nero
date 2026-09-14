@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "control_config": "nero_humanoid_config.json",
+  "enabled_arms": ["right_arm"],
+  "duration_s": 120,
+  "translation_only": false,
+  "gripper": true,
+  "scale": 1.0,
+  "session_limits": false,
+  "radius_mm": null,
+  "tcp_speed_mm_s": 400.0,
+  "joint_speed_deg_s": 120.0,
+  "angular_speed_deg_s": 60.0,
+  "speed_percent": 100,
+  "note": "Moonbot Placo + continuous move_js, Xnero body/shoulder mapping, Pico/XRoboToolkit input. Default remains right arm can0; add --dual for right can0/right hand plus left can1/left hand. Head forward/up/right at Grip -> robot body forward/up/right, independent of TCP orientation, 1:1 plus controller orientation, 75 Hz, 400 mm/s TCP, 120 deg/s joint and 60 deg/s orientation ceilings, 2 deg joint steps. These are host settings, not verified hardware maximum speeds. JS bypasses firmware trajectory smoothing; its speed is bounded in the host. Input loss holds and requires fresh release/regrip. Startup and each controller secondary button return the corresponding arm to home_poses.json at separate bounded speeds; no shutdown return or zero calibration. Factory model limits retained; physical tracking performance requires live validation. Use deployment_legacy.json for previous behavior."
+}

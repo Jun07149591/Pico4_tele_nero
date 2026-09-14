@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "mode": "single",
+  "fps": 30,
+  "image_width": 640,
+  "image_height": 480,
+  "max_robot_age_s": 0.10,
+  "max_camera_age_s": 0.10,
+  "max_camera_skew_s": 0.05,
+  "max_schedule_lateness_s": 0.04,
+  "min_episode_frames": 20,
+  "max_episode_seconds": 180,
+  "jpeg_quality": 95,
+  "writer_queue_frames": 40,
+  "minimum_free_gb": 3,
+  "cameras": {
+    "front": {"backend": "realsense", "serial": "demo-front", "fps": 30},
+    "right_wrist": {"backend": "realsense", "serial": "demo-right-wrist", "fps": 30}
+  }
+}

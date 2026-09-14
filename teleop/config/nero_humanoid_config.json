@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "arm_id": "right_arm",
+  "robot_config": "teleop_config.json",
+  "urdf": "../models/nero/nero_description.urdf",
+  "replay_seed_report": "demo_seed.json",
+  "runtime_profile": "moonbot_xnero",
+  "pose_basis_change": [
+    [
+      1,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      -1
+    ]
+  ],
+  "controller_reference_to_base": [
+    [
+      0,
+      1,
+      0
+    ],
+    [
+      -1,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      1
+    ]
+  ],
+  "mapping_status": "reference_model_pending_physical_validation",
+  "mapping_mode": "head_relative_body",
+  "head_to_tcp_axes": [
+    [
+      0,
+      0,
+      -1
+    ],
+    [
+      0,
+      1,
+      0
+    ],
+    [
+      1,
+      0,
+      0
+    ]
+  ],
+  "humanoid_frames": "humanoid_frames.json",
+  "home_poses": "home_poses.json",
+  "mapping_note": "Headset horizontal heading at Grip -> body +X forward,+Y left,+Z up -> selected shoulder base. Forward/up/right follow robot body forward/up/right, independent of TCP or controller orientation. Freeze heading until release/regrip. Position and spatial relative rotation use the same proper rotation. Optional head_relative_tcp restores the previous grip-time TCP axes. Source axes: XRoboToolkit +X right,+Y up,-Z forward; quaternion xyzw.",
+  "translation_scale": 1,
+  "max_displacement_m": null,
+  "max_tcp_speed_m_s": 0.4,
+  "max_joint_speed_deg_s": 120,
+  "max_joint_step_deg": 2,
+  "max_joint_session_deg": null,
+  "position_tolerance_m": 0.0005,
+  "orientation_tolerance_deg": 0.3,
+  "max_gap_s": 0.2,
+  "control_hz": 75,
+  "orientation_mode": "relative_link7",
+  "max_angular_speed_deg_s": 60,
+  "max_rotation_session_deg": 180,
+  "rotation_scale": 1,
+  "placo_position_weight": 1,
+  "placo_orientation_weight": 0.45,
+  "placo_posture_weight": 0.001,
+  "gripper_mode": "hold",
+  "motion_output_enabled": false
+}

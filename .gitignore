@@ -1,0 +1,30 @@
+# Generated environments, native SDK downloads, and machine settings
+.envs/
+.runtime/
+.downloads/
+.venv*/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.*
+!.env.example
+data_collection/config/capture.local.json
+
+# Recordings, exports, robot logs, and verification output
+data/
+logs/
+artifacts/
+dist/
+build/
+*.h5
+*.parquet
+*.mp4
+*.bag
+*.deb
+*.apk
+.writer.lock
+.DS_Store
+.idea/
+.vscode/

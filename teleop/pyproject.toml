@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nero-pico-teleop"
+version = "0.1.0"
+description = "Standalone PICO 4 Ultra teleoperation pipeline for a side-mounted seven-joint Nero arm"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.11",
+    "pin>=3.2,<4",
+    "casadi>=3.6",
+    "python-can>=4.6",
+    "typing-extensions>=4",
+]
+
+[project.scripts]
+nero-pico-teleop = "nero_pico_teleop.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nero_pico_teleop*"]

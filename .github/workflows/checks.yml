@@ -1,0 +1,18 @@
+name: Source Checks
+on:
+  push:
+  pull_request:
+jobs:
+  portability:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: bash scripts/test.sh packaging
+      - name: Shell and JavaScript syntax
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+          node --check data_collection/nero_pico_data/static/app.js
+      - run: python scripts/package.py

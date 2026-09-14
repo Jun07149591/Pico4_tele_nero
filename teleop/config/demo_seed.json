@@ -1,0 +1,4 @@
+{
+  "description": "Offline-only joint seed for the virtual arm; never used for physical takeover.",
+  "last_pair": {"joint_angles_deg": [0, 45, -60, 60, 0, 20, 0]}
+}

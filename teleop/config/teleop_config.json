@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "active_arm": "right_arm",
+  "configuration_scope": "Reference side-mounted Nero rig. CAN adapter identity is site-specific; see docs/CONFIGURATION.md.",
+  "arms": {
+    "left_arm": {
+      "enabled": true,
+      "physical_side": "left",
+      "visual_side": "right",
+      "can_channel": "can1",
+      "bitrate": 1000000,
+      "firmware": "NeroFW.V120",
+      "tool": "agx_gripper",
+      "controller_hand": "left",
+      "mounting": "side",
+      "controller_mounting_readback_verified": true,
+      "connection_verification": {
+        "physical_zero_alignment_verified": true,
+        "usb_adapter_serial": null,
+        "source": "reference_rig_verified; verify again when changing robot or mechanical zero"
+      },
+      "tcp_point_preview": {
+        "parent_frame": "sdk_flange_link7",
+        "point_in_parent_m": [
+          0.175,
+          0,
+          -0.0235
+        ]
+      },
+      "controller_joint_limits": {
+        "source": "official_factory_defaults",
+        "user_modified_limits": false
+      }
+    },
+    "right_arm": {
+      "enabled": true,
+      "physical_side": "right",
+      "visual_side": "left",
+      "can_channel": "can0",
+      "bitrate": 1000000,
+      "firmware": "NeroFW.V120",
+      "tool": "agx_gripper",
+      "controller_hand": "right",
+      "mounting": "side",
+      "controller_mounting_readback_verified": true,
+      "connection_verification": {
+        "physical_zero_alignment_verified": true,
+        "usb_adapter_serial": null,
+        "source": "reference_rig_verified; verify again when changing robot or mechanical zero"
+      },
+      "tcp_point_preview": {
+        "parent_frame": "sdk_flange_link7",
+        "point_in_parent_m": [
+          0.175,
+          0,
+          -0.0235
+        ]
+      },
+      "controller_joint_limits": {
+        "source": "official_factory_defaults",
+        "user_modified_limits": false
+      }
+    }
+  }
+}

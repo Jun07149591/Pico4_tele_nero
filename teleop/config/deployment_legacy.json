@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "control_config": "nero_relative_config.json",
+  "duration_s": 120,
+  "translation_only": true,
+  "gripper": false,
+  "scale": 1.0,
+  "session_limits": false,
+  "radius_mm": null,
+  "tcp_speed_mm_s": 200.0,
+  "joint_speed_deg_s": 60.0,
+  "angular_speed_deg_s": 5.0,
+  "speed_percent": 100,
+  "note": "Previous differential IK, move_j, head-relative TCP translation-only deployment, retained for comparison."
+}

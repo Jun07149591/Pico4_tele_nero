@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "body_axes": {"x": "forward", "y": "left", "z": "up"},
+  "source": "Maniskill_xnero/assets/nero_xhand/xhand_nero_description_fixed.urdf",
+  "root_to_body_rotation": [[-1, 0, 0], [0, -1, 0], [0, 0, 1]],
+  "mounts": {
+    "left_arm": {
+      "source_joint": "left_arm_mount",
+      "xyz_m": [0, -0.2, 0.855],
+      "rpy_rad": [1.5708, -1.5708, 0]
+    },
+    "right_arm": {
+      "source_joint": "right_arm_mount",
+      "xyz_m": [0, 0.2, 0.855],
+      "rpy_rad": [-1.5708, -1.5708, 0]
+    }
+  },
+  "physical_dimensions_verified": false,
+  "note": "Reference mounting transforms only; this file does not enable either arm. Relative position deltas use mount rotation, not the reference shoulder translation. Body directions are from the robot's perspective."
+}

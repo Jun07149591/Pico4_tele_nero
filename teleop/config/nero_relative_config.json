@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "arm_id": "right_arm",
+  "robot_config": "teleop_config.json",
+  "urdf": "../models/nero/nero_description.urdf",
+  "replay_seed_report": "demo_seed.json",
+  "pose_basis_change": [
+    [
+      1,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      -1
+    ]
+  ],
+  "controller_reference_to_base": [
+    [
+      0,
+      1,
+      0
+    ],
+    [
+      -1,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      1
+    ]
+  ],
+  "mapping_status": "user_defined_pending_physical_validation",
+  "mapping_mode": "head_relative_tcp",
+  "tracking_to_base": [
+    [
+      0.023619388786204665,
+      0.9978399539236857,
+      0.06129886480957923
+    ],
+    [
+      -0.9997201035293422,
+      0.02365810025927797,
+      0.0000942942421884685
+    ],
+    [
+      -0.0013561241271645911,
+      -0.06128393464603048,
+      0.9981194519102676
+    ]
+  ],
+  "mapping_note": "User-requested mapping: headset forward (-Z) -> TCP +X, up (+Y) -> TCP +Y, right (+X) -> TCP +Z. Uses headset and commanded TCP orientations at Grip; translation axes stay fixed during a clutch. Requested directions confirmed, physical validation of this implementation pending.",
+  "head_to_tcp_axes": [
+    [
+      0,
+      0,
+      -1
+    ],
+    [
+      0,
+      1,
+      0
+    ],
+    [
+      1,
+      0,
+      0
+    ]
+  ],
+  "translation_scale": 0.1,
+  "max_displacement_m": 0.02,
+  "max_tcp_speed_m_s": 0.01,
+  "max_joint_speed_deg_s": 5,
+  "max_joint_step_deg": 0.5,
+  "max_joint_session_deg": 10,
+  "position_tolerance_m": 0.0005,
+  "orientation_tolerance_deg": 0.2,
+  "max_gap_s": 0.25,
+  "control_hz": 30,
+  "orientation_mode": "hold_initial_link7",
+  "gripper_mode": "hold",
+  "motion_output_enabled": false
+}

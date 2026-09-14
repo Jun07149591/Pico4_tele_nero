@@ -1,0 +1,8 @@
+{
+  "description": "Regression fixture for the legacy fixed mapping, not a deployment calibration.",
+  "orthogonalized_source_basis_columns_up_outward_left": [
+    [0.023619388786204665, -0.0013561241271645911, -0.9997201035293422],
+    [0.9978399539236857, -0.06128393464603048, 0.02365810025927797],
+    [0.06129886480957923, 0.9981194519102676, 0.0000942942421884685]
+  ]
+}
