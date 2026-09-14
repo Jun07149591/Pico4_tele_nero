@@ -1,7 +1,7 @@
 # pico4_tele_nero
 
-PICO 4 Ultra + XRoboToolkit 驱动 Nero 人形双臂的本地遥操与示范数据采集工程。
-工程支持先控制右臂的单臂模式，也支持右臂 `can0` 与左臂 `can1` 同时控制；输入、逆运动学、CAN 输出、相机采集和 LeRobot/OpenPI 导出都在同一个目录中。
+PICO 4 Ultra + XRoboToolkit 驱动 Nero 人形双臂的本地遥操与示范数据采集项目。
+项目支持先控制右臂的单臂模式，也支持右臂 `can0` 与左臂 `can1` 同时控制；输入、逆运动学、CAN 输出、相机采集和 LeRobot/OpenPI 导出都在同一个目录中。
 
 ## 功能
 
@@ -155,55 +155,6 @@ bash scripts/data.sh demo --root data/demo --port 8766
 
 演示网页为 <http://127.0.0.1:8766>，会显示模拟数据标识，不控制真实硬件。
 
-## OpenPI
 
-OpenPI 不随仓库复制。准备好 OpenPI checkout 和它的虚拟环境后：
 
-```bash
-export OPENPI_PROJECT_DIR=/path/to/openpi
-bash scripts/openpi.sh check --spec \
-  /path/to/export/local/nero_pick_place/meta/nero_openpi.json
-bash scripts/openpi.sh norm --spec \
-  /path/to/export/local/nero_pick_place/meta/nero_openpi.json
-```
 
-具体微调参数见 `docs/DATA_FORMAT.md`。导出数据不会上传 Hugging Face。
-
-## 检查和测试
-
-```bash
-bash scripts/check.sh                 # 依赖和模型检查，不连接真机
-bash scripts/test.sh teleop           # 遥操离线测试
-bash scripts/test.sh data             # 采集/导出测试
-bash scripts/test.sh packaging        # 路径迁移和设备配置测试
-bash scripts/data_python.sh -m pip install playwright
-bash scripts/data_python.sh -m playwright install --with-deps chromium
-bash scripts/test.sh browser          # 合成数据网页检查
-```
-
-真机操作前使用 `bash scripts/check.sh --live --duration 5` 检查 PICO、CAN 和反馈。该命令不发送运动目标。
-
-已执行的测试与实机验证范围见 [验证记录](docs/VERIFICATION.md)。只读 `check.sh --live` 默认检查右臂；`start_teleop.sh --dual` 在接管前检查左右两臂。
-
-## 上传 GitHub
-
-在此目录建立自己的 Git 仓库即可，`.gitignore` 已排除运行数据和本机配置：
-
-```bash
-git init
-git add .
-git status --short
-git commit -m "Add PICO Nero teleoperation and data collection"
-```
-
-随后按 GitHub 新建仓库页面提示添加 remote 并推送。也可以生成干净源码 ZIP：
-
-```bash
-python3 scripts/package.py
-```
-
-ZIP 位于 `dist/pico4_tele_nero.zip`，包含一个顶层项目目录。复制到另一台电脑后按首次安装步骤准备环境；不要复制旧虚拟环境。
-
-## 许可证和来源
-
-`vendor/pyAgxArm` 按其 LGPL-3.0 许可证发布；数据时间对齐模块改编自 EVA 的 Apache-2.0 代码，Lucide 图标使用 ISC 许可证，Nero URDF 使用上游 MIT 许可证。完整来源与许可证见 [第三方声明](docs/THIRD_PARTY_NOTICES.md)。XRoboToolkit 安装包由上游发布，本仓库只保存下载地址和校验值。该整理包尚未为本项目自有代码指定新的开源许可证，第三方许可证保持各自适用范围。
