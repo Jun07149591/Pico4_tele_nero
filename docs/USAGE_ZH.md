@@ -4,13 +4,57 @@
 
 ## 1. 首次准备
 
-先按 [README](../README.md) 安装系统包、Conda、RealSense 设备权限规则，再运行：
+### 安装完整运行环境
+
+先按 [README](../README.md) 安装系统包、Conda、RealSense 设备权限规则，再在当前项目根目录运行：
 
 ```bash
 bash scripts/setup.sh
+bash scripts/check.sh
+```
+
+**克隆源码不等于完成安装。** 源码仓库不包含虚拟环境、XRoboToolkit PC Service、C SDK 和 APK。默认 `setup.sh` 会创建 Python 环境，并从官方固定版本下载、校验和解压 XR 文件。即使电脑上已经有遥操 Python 环境，新项目目录也需要自己的 XR 运行文件。
+
+安装脚本最后应输出 `Setup complete. Environments: ...`。只看到 `Teleop dependencies ready` 或 `Capture/export dependencies ready` 时，后续 XR 安装可能还没完成。若脚本报错，先处理该错误；不要直接跳到启动遥操。
+
+完整安装后，项目根目录应包含：
+
+```text
+.runtime/
+  roboticsservice/RoboticsServiceProcess
+  roboticsservice/SDK/x64/libPXREARobotSDK.so
+  XRoboToolkit-PICO-1.1.1-SDK29.apk
+```
+
+`check.sh` 默认只检查依赖、模型、Placo 和 SDK 加载，不连接真机或发送运动指令。检查结果应为 `"technical_checks_passed": true`、`"errors": []`。硬件和追踪是否就绪，在每日启动时另行检查。
+
+安装选项的区别：
+
+| 命令 | 安装内容 |
+| --- | --- |
+| `bash scripts/setup.sh` | 完整安装：遥操环境、采集环境、XR PC 服务、SDK 和 APK |
+| `bash scripts/setup.sh --teleop-only` | 遥操环境及 XR 文件，不安装采集环境 |
+| `bash scripts/setup.sh --data-only` | 只安装采集环境，不安装遥操环境和 XR 文件 |
+| `bash scripts/setup.sh --skip-xr` | 安装 Python 环境，跳过 XR 文件，需之后补装 |
+
+### 补装缺失的 XR 文件
+
+如果启动提示 `XR service missing. Run bash scripts/fetch_xr.sh.`，或预检报告中出现 `libPXREARobotSDK.so: cannot open shared object file`，先运行：
+
+```bash
+bash scripts/fetch_xr.sh
+bash scripts/check.sh
+```
+
+这两步用于已有 Python 环境的情况，不需要重新安装整套环境。`fetch_xr.sh` 需要联网访问 GitHub，默认把安装包缓存到 `.downloads/`，通过 SHA-256 校验后安装到 `.runtime/`。这些目录被 Git 忽略；在本机正常安装后，无需每天重复下载。
+
+若出现 `Python environment missing`，则需要执行完整的 `bash scripts/setup.sh`。自定义 `PICO_XR_SDK` 只改变 SDK 库路径，不能代替 PC 服务的安装。
+
+### 绑定相机和安装 PICO 应用
+
+```bash
 bash scripts/data.sh cameras
 bash scripts/configure_cameras.sh --auto
-bash scripts/check.sh
 ```
 
 `--auto` 只在恰好连接一台 D455 和一台 D405 时自动分配角色。两个同型号腕部相机必须用 `--right-wrist SERIAL --left-wrist SERIAL` 显式区分。相机配置写入本机 `capture.local.json`。配置后重启采集服务才会生效。
@@ -41,10 +85,20 @@ bash scripts/configure_can.sh --single
 bash scripts/start_pico_service.sh
 ```
 
+安装程序不会自动启动 PC 服务，也不配置开机自启。正常启动后该终端持续运行；若提示 `XR service missing`，先按上面的补装步骤处理，再启动服务。提示 `XRoboToolkit PC service is already running.` 表示已有服务进程，无需重复启动。
+
 5. 戴上 PICO，打开 XRoboToolkit，连接电脑并启动控制器追踪发送。头显连接电脑的局域网 IP；`127.0.0.1:60061` 是电脑内 Python 到 PC Service 的地址。
 6. 松开所使用手柄的 Grip、Trigger、功能键，并让摇杆回中。
 
 仅插 USB 不代表追踪链路已经连通。USB 可用于安装、供电、ADB 或已配置的网络转发，数据是否可用以 XRoboToolkit 持续发送和遥操预检为准。
+
+首次连接或排查启动失败时，可在另一个终端运行只读连接检查：
+
+```bash
+bash scripts/check.sh --live --duration 5
+```
+
+该命令默认检查右臂 CAN 反馈和 PICO 中立输入，不发送运动目标。双臂启动入口还会分别检查左右两臂。
 
 ## 3. 启动遥操
 
@@ -134,6 +188,9 @@ bash scripts/data.sh review --root data/right_arm --port 8765
 
 | 现象 | 检查与处理 |
 | --- | --- |
+| `XR service missing` | 当前项目没有安装 PC 服务；运行 `bash scripts/fetch_xr.sh`、`bash scripts/check.sh`，再启动 `bash scripts/start_pico_service.sh` |
+| `libPXREARobotSDK.so: cannot open shared object file` | 若报告中的缺失路径位于 `.runtime/`，按上面的 XR 补装步骤处理；使用自定义 `PICO_XR_SDK` 时，检查它是否仍指向有效文件 |
+| `Python environment missing` | 先运行 `bash scripts/setup.sh`；只运行 `fetch_xr.sh` 不会创建 Python 环境 |
 | PICO 显示 connect error | 检查 PC Service、局域网地址、网络连通和应用前台发送；USB 插着不代表追踪已发送 |
 | `PICO must send fresh controller input` | 戴好头显，确认所用控制器被追踪，松开 Grip/Trigger 和功能键，再启动 |
 | `tracking_stale` / 输入超时 | 查看前面的追踪中断事件；恢复发送后释放并重新握持，严重错误退出后需重新启动 |

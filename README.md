@@ -51,7 +51,10 @@ RealSense 的 Python wheel 不会安装系统设备权限规则。新电脑还�
 ```bash
 cd pico4_tele_nero
 bash scripts/setup.sh
+bash scripts/check.sh
 ```
+
+**首次使用必须完成安装后再启动遥操。** GitHub 源码和源码 ZIP 不包含 XRoboToolkit 的二进制运行文件；即使这台电脑已经有 Python 环境，换到新项目目录后也要确认该目录的 XR 文件已安装。
 
 安装脚本在用户缓存目录创建三个环境（默认 `~/.cache/pico4_tele_nero/envs`），不依赖工程所在路径，也支持路径包含空格。首次安装需要能访问 PyPI、GitHub 和 OpenPI/LeRobot 的固定 revision。可用环境变量修改位置：
 
@@ -60,9 +63,34 @@ export PICO_ENV_ROOT="$HOME/pico4_nero_envs"
 bash scripts/setup.sh
 ```
 
-脚本会下载并校验 XRoboToolkit PC Service 和 PICO APK。PC 安装包只解压到 `.runtime/roboticsservice`，不会自动修改系统服务；PICO APK 位于 `.runtime/`，需要通过开发者模式安装到头显。也可以先执行 `bash scripts/setup.sh --skip-xr`，稍后单独执行 `bash scripts/fetch_xr.sh`。
+默认 `setup.sh` 会安装遥操和采集环境，并下载、校验和解压 XRoboToolkit PC Service、C SDK 和 PICO APK。等脚本最后输出 `Setup complete. Environments: ...`，再运行 `check.sh`；仅看到 `Teleop dependencies ready` 或 `Capture/export dependencies ready`，不表示完整安装已经结束。
 
-如果现场已经有 SDK 文件，可设置 `PICO_XR_SDK` 指向 `libPXREARobotSDK.so`，设置 `NERO_AGX_SDK_ROOT` 指向 `pyAgxArm` 目录。
+安装后应有以下文件，它们保存在本机，不提交到 GitHub：
+
+```text
+.runtime/
+  roboticsservice/RoboticsServiceProcess
+  roboticsservice/SDK/x64/libPXREARobotSDK.so
+  XRoboToolkit-PICO-1.1.1-SDK29.apk
+```
+
+PC 服务只解压到项目目录，安装脚本不会自动启动服务或配置开机自启。APK 下载到电脑后，还需按 [中文使用手册](docs/USAGE_ZH.md#1-首次准备) 安装到 PICO。
+
+### 已有 Python 环境，补装 XR 文件
+
+如果使用过 `setup.sh --skip-xr`、安装中途失败，或新目录只复用了 Python 环境，启动时可能提示 `XR service missing`，预检也可能提示 `libPXREARobotSDK.so: cannot open shared object file`。在当前项目根目录执行：
+
+```bash
+bash scripts/fetch_xr.sh
+bash scripts/check.sh
+bash scripts/start_pico_service.sh
+```
+
+`fetch_xr.sh` 只下载、校验和安装 XR 文件，不重装 Python 环境。默认离线检查 `check.sh` 应显示 `"technical_checks_passed": true` 和 `"errors": []`；这表示依赖可用，不代表 PICO 追踪和真机连接已经就绪。最后一条命令启动 PC 服务，正常启动后保持该终端运行，再另开终端启动遥操。
+
+`setup.sh --teleop-only` 包含遥操环境和 XR 文件；`--data-only` 只安装采集环境，不构成完整遥操安装；`--skip-xr` 明确跳过 XR 文件。首次搭建完整流程请使用不带这些选项的 `bash scripts/setup.sh`。
+
+如果现场已经有 SDK 文件，可设置 `PICO_XR_SDK` 指向 `libPXREARobotSDK.so`，设置 `NERO_AGX_SDK_ROOT` 指向 `pyAgxArm` 目录。`PICO_XR_SDK` 只改变 Python 加载的库路径，不会安装或启动 PC 服务；本项目的 `start_pico_service.sh` 仍需要上述 `.runtime/roboticsservice` 文件。
 
 ## 配置设备
 
@@ -154,7 +182,6 @@ bash scripts/data.sh demo --root data/demo --port 8766
 ```
 
 演示网页为 <http://127.0.0.1:8766>，会显示模拟数据标识，不控制真实硬件。
-
 
 
 
