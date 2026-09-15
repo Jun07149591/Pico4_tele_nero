@@ -102,8 +102,8 @@ class AlignmentTests(unittest.TestCase):
         self.assertAlmostEqual(result["action"][7], .04)
         self.assertEqual(result["images"]["front"].monotonic, 1.01)
 
-    def test_invalid_input_future_home_session_change_and_duplicate_camera(self):
-        for field, value in (("input_healthy", False), ("home_state", "returning"), ("gripper_enabled", False)):
+    def test_invalid_input_future_session_change_and_duplicate_camera(self):
+        for field, value in (("input_healthy", False), ("gripper_enabled", False)):
             cfg, receiver, cameras = self.streams()
             receiver.history[-1]["arms"]["right_arm"][field] = value
             with self.subTest(field=field), self.assertRaises(SampleInvalid):
@@ -118,6 +118,17 @@ class AlignmentTests(unittest.TestCase):
         with self.assertRaisesRegex(SampleInvalid, "repeated"):
             sync.sample(1.001)
 
+    def test_home_return_keeps_recording_measured_state_and_sent_action(self):
+        for mode in ("single", "dual"):
+            cfg, receiver, cameras = self.streams(mode)
+            for value in receiver.history:
+                for arm in value["arms"].values():
+                    arm.update(home_state="returning", clutch_held=False)
+            result = Synchronizer(cfg, receiver, cameras).sample(1.)
+            np.testing.assert_allclose(result["state"][:7], 1.)
+            np.testing.assert_allclose(result["action"][:7], 1.08)
+            self.assertEqual(result["diagnostics"]["observation"]["arms"]["right_arm"]["home_state"], "returning")
+
     def test_policy_masks_missing_camera_and_keeps_gripper_units(self):
         cfg = config("dual")
         data = sample(0, cfg)
@@ -131,6 +142,16 @@ class AlignmentTests(unittest.TestCase):
 
 
 class StorageTests(unittest.TestCase):
+    def test_legacy_time_limit_does_not_require_a_new_dataset(self):
+        cfg = config()
+        with tempfile.TemporaryDirectory() as root:
+            cfg["max_episode_seconds"] = 180
+            with DatasetStore(root, cfg, synthetic=True):
+                original = (Path(root) / "manifest.json").read_bytes()
+            cfg["max_episode_seconds"] = None
+            with DatasetStore(root, cfg, synthetic=True):
+                self.assertEqual((Path(root) / "manifest.json").read_bytes(), original)
+
     def test_capture_rate_changes_preserve_old_episodes_and_survive_restart(self):
         cfg = config()
         self.assertEqual(cfg["fps"], 30)
@@ -309,6 +330,12 @@ class StorageTests(unittest.TestCase):
 
 
 class ControllerTests(unittest.TestCase):
+    def wait_for(self, predicate, timeout=3.):
+        deadline = time.monotonic() + timeout
+        while not predicate() and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertTrue(predicate())
+
     def test_unavailable_camera_keeps_workbench_open_without_allowing_recording(self):
         cfg = config()
         def start(camera):
@@ -339,8 +366,9 @@ class ControllerTests(unittest.TestCase):
                 camera.history.append(Frame(np.zeros((48, 64, 3), np.uint8), now, 0., 1))
             self.assertTrue(controller.status()["ready"])
             self.assertFalse(controller.status()["arm_status"]["right_arm"]["clutch_held"])
+            arm["home_state"] = "returning"
+            self.assertTrue(controller.status()["ready"])
             for field, value, reason in (("input_healthy", False, "input lost"),
-                                         ("home_state", "returning", "returning home"),
                                          ("gripper_enabled", False, "gripper unavailable"),
                                          ("gripper_feedback_monotonic", now - 1., "gripper_feedback_monotonic missing/stale")):
                 old = arm[field]
@@ -374,28 +402,108 @@ class ControllerTests(unittest.TestCase):
             self.assertIsNone(receiver.sock)
             self.assertTrue(all(camera.device is None for camera in cameras.values()))
 
-    def test_capture_and_input_loss_never_silent_resume(self):
+    def test_manual_finish_survives_time_limit_and_input_loss_with_explicit_gaps(self):
+        cfg = config()
+        cfg["max_episode_seconds"] = 1
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
+            store = stack.enter_context(DatasetStore(root, cfg, synthetic=True))
+            source = stack.enter_context(SyntheticSource(cfg))
+            controller = stack.enter_context(CaptureController(cfg, store, source, source.cameras))
+            self.wait_for(lambda: controller.status()["ready"])
+            controller.command("start", task="test movement")
+            writer = store.episode
+            self.wait_for(lambda: controller.status()["elapsed_s"] > 1.2)
+            self.assertGreater(controller.status()["frames"], 20)
+            self.assertEqual(controller.status()["state"], "recording", controller.status())
+            source.stop.set()
+            source.worker.join()
+            self.wait_for(lambda: controller.status()["skipped_frames"] > 0)
+            self.assertEqual(controller.status()["state"], "recording")
+            self.assertTrue(controller.status()["capture_wait_reason"])
+            self.assertIs(store.episode, writer)
+            self.assertFalse(list((Path(root) / "episodes").glob("*.h5")))
+            frames = controller.status()["frames"]
+            source.stop.clear()
+            source.__enter__()
+            self.wait_for(lambda: controller.status()["frames"] >= frames + 4)
+            self.assertIsNone(controller.status()["capture_wait_reason"])
+            result = controller.command("finish", outcome="success")
+            self.assertEqual(result["outcome"], "success")
+            self.assertEqual(controller.status()["state"], "idle")
+            self.assertGreater(result["capture_gaps"], 0)
+            path = Path(root) / "episodes" / result["id"]
+            with h5py.File(path, "r") as file:
+                gaps = [json.loads(value) for value in file["capture_gaps"]]
+                self.assertGreater(gaps[0]["skipped_frames"], 0)
+                self.assertGreater(gaps[0]["end_monotonic"], gaps[0]["start_monotonic"])
+                self.assertEqual(file.attrs["recording_policy"], "manual_finish")
+            self.assertIn("capture_data_gaps", validate_episode(path, store.metadata)["issues"])
+            with self.assertRaisesRegex(ValueError, "capture_data_gaps"):
+                controller.command("review", id=result["id"], verdict="pass")
+
+    def test_manual_finish_while_data_is_missing_persists_trailing_gap(self):
         cfg = config()
         with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
             store = stack.enter_context(DatasetStore(root, cfg, synthetic=True))
             source = stack.enter_context(SyntheticSource(cfg))
             controller = stack.enter_context(CaptureController(cfg, store, source, source.cameras))
-            deadline = time.monotonic() + 2
-            while not controller.status()["ready"] and time.monotonic() < deadline:
-                time.sleep(.02)
-            controller.command("start", task="test movement")
-            deadline = time.monotonic() + 3
-            while controller.status()["frames"] < 4 and time.monotonic() < deadline:
-                time.sleep(.02)
-            self.assertEqual(controller.status()["state"], "recording", controller.status())
+            self.wait_for(lambda: controller.status()["ready"])
+            controller.command("start", task="stop during dropout")
+            self.wait_for(lambda: controller.status()["frames"] >= 4)
             source.stop.set()
-            deadline = time.monotonic() + 3
-            while controller.status()["state"] in ("recording", "saving") and time.monotonic() < deadline:
-                time.sleep(.02)
-            self.assertEqual(controller.status()["state"], "idle", controller.status())
-            info = summary(next((Path(root) / "episodes").glob("*.h5")))
-            self.assertEqual(info["outcome"], "interrupted")
-            self.assertTrue(info["reason"])
+            source.worker.join()
+            self.wait_for(lambda: controller.status()["skipped_frames"] > 0)
+            result = controller.command("finish", outcome="failure")
+            self.assertEqual(result["outcome"], "failure")
+            self.assertGreater(result["capture_gaps"], 0)
+            self.assertEqual(controller.status()["state"], "idle")
+
+    def test_late_feedback_is_retried_without_losing_the_sample(self):
+        cfg = config()
+        original_sample = Synchronizer.sample
+        first_timestamp = []
+        def delayed(sync, timestamp):
+            if not first_timestamp:
+                first_timestamp.append(timestamp)
+            if timestamp == first_timestamp[0] and time.monotonic() < timestamp + .14:
+                raise SampleInvalid("feedback does not bracket sample time")
+            return original_sample(sync, timestamp)
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
+            store = stack.enter_context(DatasetStore(root, cfg, synthetic=True))
+            source = stack.enter_context(SyntheticSource(cfg))
+            controller = stack.enter_context(CaptureController(cfg, store, source, source.cameras))
+            self.wait_for(lambda: controller.status()["ready"])
+            with patch.object(Synchronizer, "sample", delayed):
+                controller.command("start", task="late feedback")
+                self.wait_for(lambda: controller.status()["frames"] >= 4)
+                result = controller.command("finish", outcome="success")
+            self.assertEqual(controller.status()["skipped_frames"], 0)
+            path = Path(root) / "episodes" / result["id"]
+            self.assertTrue(validate_episode(path, store.metadata)["ok"])
+
+    def test_writer_backpressure_retries_the_same_aligned_sample(self):
+        cfg = config()
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
+            store = stack.enter_context(DatasetStore(root, cfg, synthetic=True))
+            source = stack.enter_context(SyntheticSource(cfg))
+            controller = stack.enter_context(CaptureController(cfg, store, source, source.cameras))
+            self.wait_for(lambda: controller.status()["ready"])
+            controller.command("start", task="temporary writer backlog")
+            writer = store.episode
+            original_append = writer.append
+            attempts = []
+            def delayed(sample):
+                attempts.append((sample["monotonic"], sample["images"]["front"].sequence))
+                if len(attempts) < 3:
+                    raise RuntimeError("writer queue full")
+                original_append(sample)
+            with patch.object(writer, "append", delayed):
+                self.wait_for(lambda: controller.status()["frames"] >= 4)
+                result = controller.command("finish", outcome="success")
+            self.assertEqual(attempts[:3], [attempts[0]] * 3)
+            self.assertEqual(controller.status()["skipped_frames"], 0)
+            path = Path(root) / "episodes" / result["id"]
+            self.assertTrue(validate_episode(path, store.metadata)["ok"])
 
 
 class ReceiverTests(unittest.TestCase):

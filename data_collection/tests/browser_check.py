@@ -147,9 +147,31 @@ def main():
                     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), view
                     assert page.locator("header").bounding_box()["height"] > 0
                     page.screenshot(path=str(artifacts / f'workbench-{view}-mobile.png'), full_page=True)
+                page.locator('[data-view=capture]').click()
+                page.locator('#task').fill('等待数据时手动保存')
+                page.locator('#start').click()
+                expect(page.locator('#record-state')).to_have_text('录制中')
+                deadline = time.monotonic() + 5
+                while controller.status()['frames'] < 25 and time.monotonic() < deadline:
+                    page.wait_for_timeout(100)
+                assert controller.status()['frames'] >= 25
+                source.stop.set()
+                source.worker.join()
+                expect(page.locator('#frame-count')).to_contain_text('缺失', timeout=5000)
+                expect(page.locator('#record-state')).to_have_text('录制中 · 等待数据')
+                for button in ('success', 'failure', 'discard'):
+                    expect(page.locator(f'#{button}')).to_be_enabled()
+                for width, height, label in ((390, 844, 'mobile'), (1440, 1000, 'desktop')):
+                    page.set_viewport_size({'width': width, 'height': height})
+                    assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+                    page.screenshot(path=str(artifacts / f'workbench-wait-{label}.png'), full_page=True)
+                page.locator('#failure').click()
+                expect(page.locator('#episode-count')).to_have_text('4')
+                assert controller.status()['state'] == 'idle'
+                assert controller.status()['skipped_frames'] > 0
                 assert not errors, errors
                 print(json.dumps({"browser_errors": errors, "desktop": [1440, 1000], "mobile": [390, 844],
-                                  "record_review_replay_export": "passed"}))
+                                  "record_review_replay_export": "passed", "manual_finish_during_dropout": "passed"}))
                 browser.close()
         finally:
             server.shutdown()

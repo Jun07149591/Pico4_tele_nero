@@ -17,8 +17,6 @@ def check_packet(packet, timestamp, config):
         raise SampleInvalid("teleop arm mode differs from capture mode")
     for name in arm_order(config["mode"]):
         arm = packet["arms"][name]
-        if arm["home_state"] == "returning":
-            raise SampleInvalid(f"{name}: returning home")
         if not arm["ready"]:
             raise SampleInvalid(f"{name}: teleop not ready")
         if arm["output_state"] not in ("ACTIVE", "HOLDING"):

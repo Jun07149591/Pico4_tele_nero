@@ -20,6 +20,8 @@ def _fixed_schema(metadata):
     result = copy.deepcopy(metadata)
     result.pop("fps", None)
     result["config"].pop("fps", None)
+    # Retired runtime limit is not part of the recorded data schema.
+    result["config"].pop("max_episode_seconds", None)
     return result
 
 
@@ -98,7 +100,7 @@ class DatasetStore:
         self.episode = EpisodeWriter(self.root, self.config, task.strip(), provenance)
         return self.episode
 
-    def finish(self, outcome, reason=""):
+    def finish(self, outcome, reason="", *, final_gap=None):
         if outcome not in ("success", "failure", "discarded", "interrupted"):
             raise ValueError("invalid episode outcome")
         episode = self.episode
@@ -107,7 +109,7 @@ class DatasetStore:
         if outcome in ("success", "failure") and episode.enqueued < self.config["min_episode_frames"]:
             raise ValueError("episode too short; continue recording or discard")
         try:
-            return episode.finish(outcome, reason)
+            return episode.finish(outcome, reason, final_gap=final_gap)
         finally:
             self.episode = None
 
@@ -132,13 +134,15 @@ class EpisodeWriter:
         self.error = None
         self.enqueued = 0
         self.outcome, self.reason = None, ""
+        self.final_gap = None
         ready = threading.Event()
 
         def run():
             try:
                 with h5py.File(self.partial, "x") as file:
                     file.attrs.update(schema_version=1, task=task, outcome="inprogress", fps=config["fps"],
-                                      mode=config["mode"], provenance=json.dumps({**provenance, "capture_fps": config["fps"]}, allow_nan=False))
+                                      mode=config["mode"], recording_policy="manual_finish",
+                                      provenance=json.dumps({**provenance, "capture_fps": config["fps"]}, allow_nan=False))
                     dim = len(vector_names(config["mode"]))
                     for key in ("state", "action"):
                         file.create_dataset(key, shape=(0, dim), maxshape=(None, dim), chunks=(1, dim), dtype="f4")
@@ -146,6 +150,7 @@ class EpisodeWriter:
                         file.create_dataset(key, shape=(0,), maxshape=(None,), chunks=True,
                                             dtype="i8" if key == "wall_time_ns" else "f8")
                     file.create_dataset("diagnostics", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype())
+                    gaps = file.create_dataset("capture_gaps", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype())
                     for role in config["cameras"]:
                         file.create_dataset(f"images/{role}", shape=(0,), maxshape=(None,), dtype=h5py.vlen_dtype(np.dtype("uint8")))
                         file.create_dataset(f"image_timestamps/{role}", shape=(0, 3), maxshape=(None, 3), dtype="f8")
@@ -154,6 +159,9 @@ class EpisodeWriter:
                     while (sample := self.queue.get()) is not None:
                         if count % config["fps"] == 0 and shutil.disk_usage(root).free < config["minimum_free_gb"] * 1e9:
                             raise RuntimeError("disk space reserve reached")
+                        if gap := sample.get("capture_gap_before"):
+                            gaps.resize(len(gaps) + 1, axis=0)
+                            gaps[-1] = json.dumps(gap, allow_nan=False)
                         values = {key: sample[key] for key in ("state", "action", "monotonic", "action_monotonic", "wall_time_ns")}
                         values["timestamp"] = count / config["fps"]
                         values["diagnostics"] = json.dumps(sample["diagnostics"], allow_nan=False)
@@ -170,6 +178,9 @@ class EpisodeWriter:
                         count += 1
                         if count % config["fps"] == 0:
                             file.flush()
+                    if self.final_gap:
+                        gaps.resize(len(gaps) + 1, axis=0)
+                        gaps[-1] = json.dumps(self.final_gap, allow_nan=False)
                     file.attrs.update(outcome=self.outcome, end_reason=self.reason, frame_count=count)
                     file.flush()
                     os.fsync(file.id.get_vfd_handle())
@@ -196,13 +207,14 @@ class EpisodeWriter:
         try:
             self.queue.put_nowait(sample)
         except queue.Full as exc:
-            raise RuntimeError("writer queue full; episode interrupted instead of silently dropping frames") from exc
+            raise RuntimeError("writer queue full") from exc
         self.enqueued += 1
 
-    def finish(self, outcome, reason=""):
+    def finish(self, outcome, reason="", *, final_gap=None):
         if outcome not in ("success", "failure", "discarded", "interrupted"):
             raise ValueError("invalid episode outcome")
         self.outcome, self.reason = outcome, reason
+        self.final_gap = final_gap
         while self.worker.is_alive():
             try:
                 self.queue.put(None, timeout=.1)

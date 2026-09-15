@@ -1,6 +1,7 @@
 """Background capture and episode commands, independent of robot control."""
 
 from concurrent.futures import Future
+import math
 import queue
 import threading
 import time
@@ -10,6 +11,7 @@ from .schema import capture_fps_limit
 from .sync import Synchronizer, check_packet
 
 LOOKAHEAD_S = .06
+SAMPLE_WAIT_S = .25
 
 
 class CaptureController:
@@ -19,7 +21,9 @@ class CaptureController:
         self.jobs = queue.Queue(maxsize=16)
         self.stop = threading.Event()
         self.lock = threading.Lock()
-        self.info = {"state": "idle", "frames": 0, "elapsed_s": 0., "last_episode": None, "error": None}
+        self.info = {"state": "idle", "frames": 0, "elapsed_s": 0., "last_episode": None, "error": None,
+                     "capture_wait_reason": None, "skipped_frames": 0}
+        self.pending_gap = None
         self.worker = None
 
     def _update(self, **values):
@@ -53,6 +57,7 @@ class CaptureController:
         return {**info, "ready": reason is None, "readiness_reason": reason,
                 "review_only": self.review_only,
                 "mode": self.config["mode"], "fps": self.config["fps"],
+                "finish_mode": "manual", "max_episode_seconds": None,
                 "max_capture_fps": capture_fps_limit(self.config),
                 "synthetic": self.store.metadata["synthetic"], "root": str(self.store.root),
                 "cameras": list(self.cameras), "robot_age_ms": (now - packet["monotonic"]) * 1000 if packet else None,
@@ -78,16 +83,19 @@ class CaptureController:
     def _finish(self, outcome, reason=""):
         self._update(state="saving")
         try:
-            path = self.store.finish(outcome, reason)
+            path = self.store.finish(outcome, reason, final_gap=self.pending_gap)
         except Exception as exc:
             self._update(state="error", error=str(exc))
             raise
-        self._update(state="idle", last_episode=path.name, error=reason or None)
+        self.pending_gap = None
+        self._update(state="idle", last_episode=path.name, error=reason or None, capture_wait_reason=None)
         return summary(path)
 
     def __enter__(self):
         def run():
             synchronizer, next_tick, started = None, None, None
+            pending_sample = None
+            tick_index = 0
             try:
                 while not self.stop.is_set():
                     try:
@@ -104,7 +112,11 @@ class CaptureController:
                                                                "alignment": self.store.metadata})
                                 synchronizer = Synchronizer(self.config, self.receiver, self.cameras)
                                 started = next_tick = time.monotonic()
-                                self._update(state="recording", frames=0, elapsed_s=0., error=None)
+                                tick_index = 0
+                                pending_sample = None
+                                self.pending_gap = None
+                                self._update(state="recording", frames=0, elapsed_s=0., error=None,
+                                             capture_wait_reason=None, skipped_frames=0)
                                 result = {"started": True}
                             elif command == "configure":
                                 if self.review_only:
@@ -135,23 +147,45 @@ class CaptureController:
                     if self.store.episode is None or next_tick is None:
                         continue
                     now = time.monotonic()
+                    self._update(elapsed_s=now - started)
+                    if self.store.episode.error:
+                        self._update(capture_wait_reason=f"writer failed: {self.store.episode.error}")
+                        continue
                     if now < next_tick + LOOKAHEAD_S:
                         continue
                     try:
-                        if now - (next_tick + LOOKAHEAD_S) > self.config["max_schedule_lateness_s"]:
-                            raise RuntimeError("capture deadline missed")
-                        if next_tick - started >= self.config["max_episode_seconds"]:
-                            raise RuntimeError("maximum episode duration reached")
-                        sample = synchronizer.sample(next_tick)
+                        if pending_sample is None:
+                            pending_sample = synchronizer.sample(next_tick)
+                        sample = pending_sample
+                        if self.pending_gap:
+                            sample["capture_gap_before"] = dict(self.pending_gap)
                         self.store.episode.append(sample)
+                        pending_sample = None
+                        self.pending_gap = None
                         self._update(frames=self.store.episode.enqueued,
-                                     elapsed_s=self.store.episode.enqueued / self.config["fps"])
-                        next_tick = started + self.store.episode.enqueued / self.config["fps"]
+                                     capture_wait_reason=None)
+                        tick_index += 1
+                        next_tick = started + tick_index / self.config["fps"]
                     except Exception as exc:
-                        try:
-                            self._finish("interrupted", str(exc))
-                        except Exception:
-                            pass
+                        self._update(capture_wait_reason=str(exc))
+                        # Retry the same sample while late feedback can still arrive.
+                        # A real gap keeps the episode open without inventing samples.
+                        if now - next_tick < SAMPLE_WAIT_S:
+                            continue
+                        following_index = max(tick_index + 1,
+                            math.ceil((now - LOOKAHEAD_S - started) * self.config["fps"]))
+                        skipped = following_index - tick_index
+                        following_tick = started + following_index / self.config["fps"]
+                        if self.pending_gap is None:
+                            self.pending_gap = {"start_monotonic": next_tick, "skipped_frames": 0,
+                                                "reason": str(exc)}
+                        self.pending_gap.update(end_monotonic=following_tick, last_reason=str(exc))
+                        self.pending_gap["skipped_frames"] += skipped
+                        with self.lock:
+                            self.info["skipped_frames"] += skipped
+                        tick_index, next_tick = following_index, following_tick
+                        pending_sample = None
+                        synchronizer = Synchronizer(self.config, self.receiver, self.cameras)
             finally:
                 if self.store.episode is not None:
                     try:

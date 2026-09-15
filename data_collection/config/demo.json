@@ -9,7 +9,7 @@
   "max_camera_skew_s": 0.05,
   "max_schedule_lateness_s": 0.04,
   "min_episode_frames": 20,
-  "max_episode_seconds": 180,
+  "max_episode_seconds": null,
   "jpeg_quality": 95,
   "writer_queue_frames": 40,
   "minimum_free_gb": 3,

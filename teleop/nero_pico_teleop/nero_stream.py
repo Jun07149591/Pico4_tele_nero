@@ -39,6 +39,9 @@ def stream_configs(config, *, scale=1., radius_mm=50., tcp_speed_mm_s=50.,
             raise ValueError(f"{name} must be between {lower:g} and {upper:g}")
     if type(speed_percent) is not int or not 1 <= speed_percent <= 100:
         raise ValueError("speed_percent must be an integer from 1 to 100")
+    gripper_speed = config.get("gripper_speed_m_s", .020)
+    if not finite_number(gripper_speed) or not 0 < gripper_speed <= .1:
+        raise ValueError("gripper_speed_m_s must be between 0 (exclusive) and 0.1")
     targets = copy.deepcopy(config)
     if translation_only:
         targets.pop("max_rotation_session_deg", None)
@@ -69,7 +72,7 @@ def stream_configs(config, *, scale=1., radius_mm=50., tcp_speed_mm_s=50.,
                   angular_feedback_fault_deg=8., max_joint_command_lead_deg=1.,
                   max_tcp_command_lead_m=.005, max_angular_command_lead_deg=3.,
                   following_wait_timeout_s=1.5, gripper_max_width_m=.100,
-                  gripper_speed_m_s=.020, gripper_force_n=1., gripper_axis_deadzone=.12)
+                  gripper_speed_m_s=gripper_speed, gripper_force_n=1., gripper_axis_deadzone=.12)
     if not translation_only:
         output.update(max_rotation_session_deg=30.1, max_angular_speed_deg_s=angular_speed_deg_s + 1.)
     if reference_profile:

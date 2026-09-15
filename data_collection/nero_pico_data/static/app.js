@@ -31,6 +31,9 @@ function readinessText(reason) {
     'invalid command timestamp': '控制目标时间无效',
     'output FROZEN': '遥操已停止', 'output FAULT': '机械臂输出故障',
     'capture deadline missed': '采集处理超时',
+    'feedback does not bracket sample time': '等待关节反馈对齐',
+    'feedback interpolation gap too large': '关节反馈间隔过大',
+    'writer queue full': '等待磁盘写入',
     'nonempty task instruction is required': '任务指令未填写'
   };
   if (messages[reason]) return messages[reason];
@@ -182,10 +185,11 @@ function renderStatus() {
   $('apply-fps').disabled = rateLocked || !rateChanged || !$('capture-fps').checkValidity() || !Number.isInteger(pendingFps);
   $('dimensions').textContent = state.mode === 'dual' ? '16' : '8';
   $('robot-age').textContent = `反馈 ${state.robot_age_ms === null ? '--' : Math.max(0, state.robot_age_ms).toFixed(0)} ms`;
-  $('elapsed').textContent = formatTime(state.elapsed_s); $('frame-count').textContent = `${state.frames} 帧`;
+  $('elapsed').textContent = formatTime(state.elapsed_s);
+  $('frame-count').textContent = `${state.frames} 帧${state.skipped_frames ? ` · 缺失 ${state.skipped_frames} 帧` : ''}`;
   const taskMissing = !$('task').value.trim();
-  const blockedReason = state.readiness_reason || state.error;
-  $('record-state').textContent = states[state.state] || state.state;
+  const blockedReason = state.capture_wait_reason || state.readiness_reason || state.error;
+  $('record-state').textContent = recording && state.capture_wait_reason ? '录制中 · 等待数据' : states[state.state] || state.state;
   $('readiness').textContent = readinessText(blockedReason) || (!recording && rateChanged ? '采集频率尚未应用' : !recording && taskMissing ? '任务指令未填写' : '');
   $('readiness').title = blockedReason || '';
   $('footer-state').textContent = state.review_only ? '离线质检' : (state.synthetic ? '模拟数据源' : '本地采集'); $('root').textContent = state.root;

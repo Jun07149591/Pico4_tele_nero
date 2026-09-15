@@ -2,6 +2,12 @@
 
 采集阶段保存 Nero 原生 HDF5，包含时间戳、state/action、夹爪宽度、相机 JPEG 和遥测诊断。质检通过且 outcome 为 `success` 的片段才允许导出。
 
+录制由用户手动结束，不设固定时长。B/Y 回位时，实际测量状态与已发送回位目标仍作为 state/action 写入当前片段，遥测诊断保留 `home_state`，不会因为回位拆分片段。
+
+新片段的 HDF5 属性 `recording_policy` 为 `manual_finish`。`capture_gaps` 是变长 JSON 字符串数组，每项记录缺失区间的 `start_monotonic`、`end_monotonic`、`skipped_frames`、首次 `reason` 和最近 `last_reason`。短暂数据延迟会重试，真正缺失的帧不生成替代样本，数据恢复后在同一片段继续写入；缺失期间手动结束也保留已经确认的缺失区间。
+
+`timestamp` 是按有效帧序号除以采样频率生成的回放时间；`monotonic` 和 `wall_time_ns` 保存实际采样时间。有缺帧时，实际时间会出现跳跃，回放时长也会短于录制经过时间。非空 `capture_gaps` 会触发质检错误 `capture_data_gaps`，禁止将这种片段当作连续示范导出。旧 HDF5 无此字段时仍可读取和质检。
+
 导出使用 OpenPI 选择的 LeRobot v2.1 revision `0cf864870cf29f4738d3ade893e6fd13fbd7cdb5`，启用 `video` 特征：
 
 - `observation.state`：单臂 8 维，七个关节弧度加夹爪宽度米；双臂 16 维，左臂后右臂；

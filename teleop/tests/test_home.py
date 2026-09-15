@@ -86,6 +86,7 @@ class HomePoseTests(unittest.TestCase):
     def test_quantized_steps_converge_with_joint_tcp_and_rotation_speed_bounds(self):
         for arm_id in CAPTURED:
             _, config = config_for(arm_id)
+            home = config["home_pose"]
             model = NeroKinematics(config)
             goal = np.asarray(config["home_pose"]["joints_rad"])
             current = model.quantize_command(goal + np.deg2rad([12., -8., 7., -6., 3., 4., 5.]))
@@ -94,10 +95,12 @@ class HomePoseTests(unittest.TestCase):
                 candidate = home_step(model, current, goal, dt, config)
                 before, after = model.pose(current), model.pose(candidate)
                 elapsed = min(dt, config["max_step_interval_s"])
-                self.assertLessEqual(np.max(np.abs(np.rad2deg(candidate - current))), 20. * elapsed + 1e-8)
-                self.assertLessEqual(np.linalg.norm(after.translation - before.translation), .05 * elapsed + 1e-10)
+                self.assertLessEqual(np.max(np.abs(np.rad2deg(candidate - current))),
+                                     home["joint_speed_deg_s"] * elapsed + 1e-8)
+                self.assertLessEqual(np.linalg.norm(after.translation - before.translation),
+                                     home["tcp_speed_m_s"] * elapsed + 1e-10)
                 self.assertLessEqual(np.linalg.norm(pin.log3(before.rotation.T @ after.rotation)),
-                                     math.radians(20.) * elapsed + 1e-10)
+                                     math.radians(home["angular_speed_deg_s"]) * elapsed + 1e-10)
                 self.assertTrue(np.all(candidate >= model.model.lowerPositionLimit))
                 self.assertTrue(np.all(candidate <= model.model.upperPositionLimit))
                 current = candidate
@@ -106,6 +109,15 @@ class HomePoseTests(unittest.TestCase):
             else:
                 self.fail(f"home steps did not converge: {arm_id}")
             np.testing.assert_array_equal(home_step(model, goal, goal, 0., config), goal)
+
+    def test_gripper_speed_config_and_legacy_default(self):
+        config = load_config(CONFIG)
+        self.assertEqual(stream_configs(config)[1]["gripper_speed_m_s"], .06)
+        config.pop("gripper_speed_m_s")
+        self.assertEqual(stream_configs(config)[1]["gripper_speed_m_s"], .02)
+        for invalid in (0., -.01, .101, float("nan"), float("inf"), True, "0.06"):
+            with self.subTest(value=invalid), self.assertRaisesRegex(ValueError, "gripper_speed_m_s"):
+                stream_configs({**config, "gripper_speed_m_s": invalid})
 
     def test_legacy_secondary_button_still_pauses(self):
         config, _ = config_for("right_arm")
@@ -466,13 +478,17 @@ class HomeOutputTests(unittest.TestCase):
             joints = output.last_target.copy()
             for axis, expected_sign in ((1., -1), (-1., 1)):
                 self.push(arm_id, axisY=axis)
+                previous_input = output.gripper_last_input
+                dt = min(output.config["max_step_interval_s"],
+                         self.now - previous_input if previous_input is not None else 1. / output.config["control_hz"])
                 output.send_gripper(axis, self.now, source.gripper_generation)
                 frame = self.receivers[arm_id].recv(timeout=.1)
                 self.assertIsNotNone(frame)
                 self.assertEqual(frame.arbitration_id, 0x159)
                 width = int.from_bytes(frame.data[:4], "big", signed=True) / 1e6
                 self.assertGreater((width - feedback.value) * expected_sign, 0)
-                self.assertLessEqual(abs(width - feedback.value), .001)
+                self.assertAlmostEqual(abs(width - feedback.value), output.config["gripper_speed_m_s"] * dt, places=6)
+                self.assertGreater(abs(width - feedback.value), .02 * dt)
                 feedback.value = width
                 self.assertFalse(source.held)
                 self.assertEqual(output.state, "HOLDING")

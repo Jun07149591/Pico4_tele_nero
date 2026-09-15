@@ -46,6 +46,7 @@ def summary(path):
                 "frames": count, "seconds": count / file.attrs["fps"], "fps": int(file.attrs["fps"]),
                 "created_ns": int(file["wall_time_ns"][0]) if count else path.stat().st_mtime_ns,
                 "mode": str(file.attrs["mode"]), "reason": str(file.attrs.get("end_reason", "")),
+                "capture_gaps": len(file.get("capture_gaps", [])),
                 "cameras": list(file["images"]), "review": read_review(path)}
 
 
@@ -73,6 +74,8 @@ def validate_episode(path, metadata, *, decode_images=True):
             issues.append(f"episode_{file.attrs['outcome']}")
         if not str(file.attrs["task"]).strip():
             issues.append("missing_task")
+        if len(file.get("capture_gaps", [])):
+            issues.append("capture_data_gaps")
         if not np.isfinite(times).all() or (len(times) > 1 and not np.allclose(np.diff(times), 1 / fps, atol=1e-6, rtol=0)):
             issues.append("invalid_fixed_timeline")
         for key in ("state", "action"):

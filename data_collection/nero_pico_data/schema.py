@@ -47,7 +47,7 @@ def load_config(path=DEFAULT_CONFIG, mode=None):
     if config.get("schema_version") != 1:
         raise ValueError("unsupported capture schema")
     for name, lower, upper in (("fps", 1, 60), ("image_width", 32, 1920), ("image_height", 32, 1080),
-            ("min_episode_frames", 2, 10000), ("max_episode_seconds", 1, 3600),
+            ("min_episode_frames", 2, 10000),
             ("jpeg_quality", 50, 100), ("writer_queue_frames", 2, 1000)):
         value = config[name]
         if type(value) is not int or not lower <= value <= upper:

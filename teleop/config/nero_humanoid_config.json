@@ -78,6 +78,7 @@
   "placo_position_weight": 1,
   "placo_orientation_weight": 0.45,
   "placo_posture_weight": 0.001,
+  "gripper_speed_m_s": 0.06,
   "gripper_mode": "hold",
   "motion_output_enabled": false
 }
