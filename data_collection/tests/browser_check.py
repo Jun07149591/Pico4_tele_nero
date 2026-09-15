@@ -47,12 +47,23 @@ def main():
                 page.locator('#apply-fps').click()
                 expect(page.locator('#rate')).to_have_text('15 Hz')
                 page.locator("#task").fill("将红色方块放入盒子")
+                page.keyboard.press('Space')
+                page.keyboard.press('l')
+                assert controller.status()['state'] == 'idle'
+                expect(page.locator('#task')).to_have_value('将红色方块放入盒子 l')
+                page.locator('#task').fill('将红色方块放入盒子')
+                page.locator('#capture-view h1').click()
+                page.keyboard.press('l')
+                assert controller.status()['state'] == 'idle'
                 expect(page.locator('#start')).to_be_enabled()
                 expect(page.locator('#live-cameras img')).to_have_count(2)
                 for image in page.locator('#live-cameras img').all():
                     expect(image).to_have_js_property('naturalWidth', 640)
-                page.locator("#start").click()
+                page.keyboard.down('Space')
                 expect(page.locator('#record-state')).to_have_text('录制中')
+                page.keyboard.down('Space')
+                page.keyboard.up('Space')
+                assert controller.status()['state'] == 'recording'
                 expect(page.locator('#capture-fps')).to_be_disabled()
                 response = page.request.post(f"http://127.0.0.1:{server.server_port}/api/command",
                     headers={"X-Nero-Request": "1"}, data={"command": "configure", "fps": 20})
@@ -61,8 +72,11 @@ def main():
                 while int(page.locator('#frame-count').inner_text().split()[0]) < 25 and time.monotonic() < deadline:
                     page.wait_for_timeout(100)
                 assert int(page.locator('#frame-count').inner_text().split()[0]) >= 25
-                page.locator("#success").click()
+                page.locator('#failure').focus()
+                page.keyboard.press('Space')
                 expect(page.locator('#episode-count')).to_have_text('1')
+                assert controller.status()['last_episode'] == 'episode_01.h5'
+                assert json.loads(page.request.get(f'http://127.0.0.1:{server.server_port}/api/episodes').text())[0]['outcome'] == 'success'
                 page.screenshot(path=str(artifacts / "workbench-desktop.png"), full_page=True)
                 page.locator("#all-episodes").click()
                 page.locator(".episode-item").first.click()
@@ -82,6 +96,17 @@ def main():
                     page.locator('#task').fill(f'将红色方块放入盒子，第 {episode} 段')
                     page.locator('#start').click()
                     expect(page.locator('#record-state')).to_have_text('录制中')
+                    if episode == 2:
+                        page.locator('[data-view=episodes]').click()
+                        expect(page.locator('#select-episodes')).to_be_disabled()
+                        expect(page.locator('#delete-episodes')).to_be_disabled()
+                        response = page.request.post(f'http://127.0.0.1:{server.server_port}/api/command',
+                            headers={'X-Nero-Request': '1'}, data={'command': 'delete', 'episode_ids': ['episode_01.h5']})
+                        assert response.status == 400
+                        assert (Path(directory) / 'episodes/episode_01.h5').exists()
+                        page.keyboard.press('l')
+                        assert controller.status()['state'] == 'recording'
+                        page.locator('[data-view=capture]').click()
                     deadline = time.monotonic() + 5
                     while int(page.locator('#frame-count').inner_text().split()[0]) < 25 and time.monotonic() < deadline:
                         page.wait_for_timeout(100)
@@ -165,13 +190,55 @@ def main():
                     page.set_viewport_size({'width': width, 'height': height})
                     assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
                     page.screenshot(path=str(artifacts / f'workbench-wait-{label}.png'), full_page=True)
-                page.locator('#failure').click()
+                page.locator('#capture-view h1').click()
+                page.keyboard.press('l')
                 expect(page.locator('#episode-count')).to_have_text('4')
                 assert controller.status()['state'] == 'idle'
                 assert controller.status()['skipped_frames'] > 0
+                page.locator('[data-view=episodes]').click()
+                page.locator('.episode-item').first.click()
+                for identifier in ('episode_02.h5', 'episode_04.h5'):
+                    page.get_by_role('checkbox', name=f'选择片段 {identifier}', exact=True).check()
+                expect(page.locator('#delete-count')).to_have_text('已选 2 个片段')
+                page.locator('#delete-episodes').click()
+                expect(page.locator('#delete-dialog')).to_be_visible()
+                page.locator('#cancel-delete').click()
+                expect(page.locator('#episode-count')).to_have_text('4')
+                page.locator('#delete-episodes').click()
+                for width, height, label in ((1440, 1000, 'desktop'), (390, 844, 'mobile')):
+                    page.set_viewport_size({'width': width, 'height': height})
+                    assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+                    page.screenshot(path=str(artifacts / f'workbench-delete-{label}.png'), full_page=True)
+                page.locator('#confirm-delete').click()
+                expect(page.locator('#episode-count')).to_have_text('2')
+                expect(page.locator('#replay')).to_be_hidden()
+                expect(page.locator('#delete-count')).to_have_text('已选 0 个片段')
+                for identifier in ('episode_02.h5', 'episode_04.h5'):
+                    path = Path(directory) / 'episodes' / identifier
+                    assert not path.exists() and not path.with_suffix('.review.json').exists()
+                assert len(list((export_path / 'data').rglob('*.parquet'))) == 2
+                assert len(list((export_path / 'videos').rglob('*.mp4'))) == 4
+                page.reload()
+                expect(page.locator('#episode-count')).to_have_text('2')
+                source.stop.clear()
+                source.__enter__()
+                page.locator('[data-view=capture]').click()
+                page.locator('#task').fill('删除后继续采集')
+                expect(page.locator('#start')).to_be_enabled()
+                page.locator('#capture-view h1').click()
+                page.keyboard.press('Space')
+                expect(page.locator('#record-state')).to_have_text('录制中')
+                deadline = time.monotonic() + 5
+                while controller.status()['frames'] < 25 and time.monotonic() < deadline:
+                    page.wait_for_timeout(100)
+                assert controller.status()['frames'] >= 25
+                page.keyboard.press('L')
+                expect(page.locator('#episode-count')).to_have_text('3')
+                assert controller.status()['last_episode'] == 'episode_05.h5'
                 assert not errors, errors
                 print(json.dumps({"browser_errors": errors, "desktop": [1440, 1000], "mobile": [390, 844],
-                                  "record_review_replay_export": "passed", "manual_finish_during_dropout": "passed"}))
+                                  "record_review_replay_export": "passed", "manual_finish_during_dropout": "passed",
+                                  "keyboard_recording_and_episode_deletion": "passed"}))
                 browser.close()
         finally:
             server.shutdown()

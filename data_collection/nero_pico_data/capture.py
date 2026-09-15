@@ -139,6 +139,11 @@ class CaptureController:
                                     raise ValueError("quality check failed: " + ", ".join(qc["issues"]))
                                 write_review(path, kwargs["verdict"], kwargs.get("notes", ""))
                                 result = {**summary(path), "quality": qc}
+                            elif command == "delete":
+                                result = self.store.delete_episodes(kwargs["episode_ids"])
+                                with self.lock:
+                                    if self.info["last_episode"] in result["deleted"]:
+                                        self.info["last_episode"] = None
                             else:
                                 raise ValueError("unknown capture command")
                             future.set_result(result)

@@ -5,9 +5,12 @@ import os
 from pathlib import Path
 import socket
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 import h5py
 import numpy as np
@@ -20,6 +23,7 @@ from nero_pico_data.openpi_policy import NeroInputs, NeroOutputs
 from nero_pico_data.quality import summary, validate_episode, write_review
 from nero_pico_data.receiver import TelemetryReceiver
 from nero_pico_data.schema import load_config, manifest, vector, vector_names
+from nero_pico_data.server import create_server
 from nero_pico_data.storage import DatasetStore, read_rgb
 from nero_pico_data.sync import SampleInvalid, Synchronizer
 from nero_pico_data.synthetic import SyntheticSource
@@ -142,6 +146,66 @@ class AlignmentTests(unittest.TestCase):
 
 
 class StorageTests(unittest.TestCase):
+    def test_delete_selected_episodes_preserves_exports_and_never_reuses_identifiers(self):
+        cfg = config()
+        with tempfile.TemporaryDirectory() as root:
+            with DatasetStore(root, cfg, synthetic=True) as store:
+                paths = []
+                for _ in range(3):
+                    writer = store.start("pick", {})
+                    for index in range(4):
+                        writer.append(sample(index, cfg))
+                    path = store.finish("success")
+                    write_review(path, "pass", "kept with episode")
+                    paths.append(path)
+                export = Path(root) / "exports" / "independent.mp4"
+                export.parent.mkdir()
+                export.write_bytes(b"independent exported copy")
+                (Path(root) / "episode_sequence.json").unlink()
+                for invalid in ([], [paths[0].name] * 2, [paths[0].name, "episode_99.h5"],
+                                ["../episode_01.h5"], ["episode_../episode_01.h5"], "all", [None]):
+                    with self.subTest(identifiers=invalid), self.assertRaises(ValueError):
+                        store.delete_episodes(invalid)
+                    self.assertTrue(all(path.exists() and path.with_suffix(".review.json").exists() for path in paths))
+                deleted = store.delete_episodes([paths[2].name, paths[0].name])
+                self.assertEqual(deleted["deleted"], [paths[2].name, paths[0].name])
+                for path in (paths[0], paths[2]):
+                    self.assertFalse(path.exists())
+                    self.assertFalse(path.with_suffix(".review.json").exists())
+                self.assertTrue(paths[1].exists())
+                self.assertEqual(export.read_bytes(), b"independent exported copy")
+            with DatasetStore(root, cfg, synthetic=True) as store:
+                writer = store.start("next", {})
+                self.assertEqual(writer.identifier, "episode_04")
+                with self.assertRaisesRegex(ValueError, "finish recording"):
+                    store.delete_episodes([paths[1].name])
+                self.assertTrue(paths[1].exists())
+                store.finish("discarded")
+                store.delete_episodes([paths[1].name, "episode_04.h5"])
+            with DatasetStore(root, cfg, synthetic=True) as store:
+                self.assertEqual(store.start("after deleting all", {}).identifier, "episode_05")
+                store.finish("discarded")
+
+    def test_delete_rejects_symlinks_without_touching_other_files(self):
+        cfg = config()
+        with tempfile.TemporaryDirectory() as root, DatasetStore(root, cfg, synthetic=True) as store:
+            target = Path(root) / "unrelated.h5"
+            target.write_bytes(b"keep")
+            linked = Path(root) / "episodes" / "episode_01.h5"
+            linked.symlink_to(target)
+            with self.assertRaises(ValueError):
+                store.delete_episodes([linked.name])
+            self.assertEqual(target.read_bytes(), b"keep")
+            linked.unlink()
+            writer = store.start("review symlink", {})
+            writer.append(sample(0, cfg))
+            path = store.finish("discarded")
+            path.with_suffix(".review.json").symlink_to(target)
+            with self.assertRaisesRegex(ValueError, "review file"):
+                store.delete_episodes([path.name])
+            self.assertTrue(path.exists())
+            self.assertEqual(target.read_bytes(), b"keep")
+
     def test_legacy_time_limit_does_not_require_a_new_dataset(self):
         cfg = config()
         with tempfile.TemporaryDirectory() as root:
@@ -504,6 +568,66 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(controller.status()["skipped_frames"], 0)
             path = Path(root) / "episodes" / result["id"]
             self.assertTrue(validate_episode(path, store.metadata)["ok"])
+
+
+class ServerTests(unittest.TestCase):
+    def test_delete_waits_for_export_and_works_in_offline_review(self):
+        cfg = config()
+        release, exporting = threading.Event(), threading.Event()
+        def export(*_args, **_kwargs):
+            exporting.set()
+            if not release.wait(5):
+                raise RuntimeError("test export timed out")
+            return {"episodes": 1}
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
+            store = stack.enter_context(DatasetStore(root, cfg, synthetic=True))
+            writer = store.start("pick", {})
+            for index in range(4):
+                writer.append(sample(index, cfg))
+            path = store.finish("success")
+            write_review(path, "pass", "")
+            controller = stack.enter_context(CaptureController(cfg, store, TelemetryReceiver("/unused"), {}, review_only=True))
+            stack.enter_context(patch("nero_pico_data.server.export_dataset", side_effect=export))
+            server = create_server(controller, 0)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            def request(route, body=None, headers=None):
+                data = json.dumps(body).encode() if body is not None else None
+                req = Request(f"http://127.0.0.1:{server.server_port}{route}", data=data,
+                              headers=headers if headers is not None else {"Content-Type": "application/json", "X-Nero-Request": "1"})
+                try:
+                    response = urlopen(req, timeout=3)
+                except HTTPError as exc:
+                    response = exc
+                with response:
+                    return response.status, json.load(response)
+            deletion = {"command": "delete", "episode_ids": [path.name]}
+            try:
+                status, _ = request("/api/export", {"repo_id": "local/test", "episode_ids": [path.name], "allow_synthetic": True})
+                self.assertEqual(status, 202)
+                self.assertTrue(exporting.wait(2))
+                status, result = request("/api/command", deletion)
+                self.assertEqual(status, 400)
+                self.assertIn("export is running", result["error"])
+                self.assertTrue(path.exists())
+                release.set()
+                deadline = time.monotonic() + 3
+                while request("/api/status")[1]["export"]["state"] == "running" and time.monotonic() < deadline:
+                    time.sleep(.01)
+                self.assertEqual(request("/api/command", deletion, headers={"Content-Type": "application/json"})[0], 403)
+                self.assertTrue(path.exists())
+                status, result = request("/api/command", deletion)
+                self.assertEqual(status, 200)
+                self.assertEqual(result["deleted"], [path.name])
+                self.assertEqual(request("/api/episodes")[1], [])
+                self.assertEqual(request("/api/episode?id=" + path.name)[0], 400)
+                self.assertFalse(path.with_suffix(".review.json").exists())
+            finally:
+                release.set()
+                server.shutdown()
+                server.server_close()
+                worker.join()
+                server.export_pool.shutdown(wait=True)
 
 
 class ReceiverTests(unittest.TestCase):

@@ -21,6 +21,8 @@ OpenPI 使用时将 `meta/nero_openpi.json` 传给 `scripts/openpi.sh`。脚本�
 
 数据集名称必须符合 `namespace/dataset`，例如 `local/nero_pick_place`。网页会按采集根目录保存名称，刷新后继续使用上次名称；一次导出不会覆盖已有目录。
 
+原始片段支持在网页勾选删除，同时删除同名 `.review.json`。删除前会把已使用的最大编号保存到录制根目录的 `episode_sequence.json`，后续新片段不复用已删除编号；复制完整原始数据集时保留这个文件。旧录制目录首次使用此功能时会从已有片段及 `.inprogress` 自动建立编号记录。删除原始片段不修改已完成的导出目录及其来源记录。
+
 ## OpenPI 微调入口
 
 先按 [OpenPI 官方 README](https://github.com/Physical-Intelligence/openpi#fine-tuning-base-models-on-your-own-data) 建立训练环境、下载模型并准备 GPU。采集环境使用 CPU PyTorch，不包含 OpenPI 的 JAX/GPU 训练依赖。

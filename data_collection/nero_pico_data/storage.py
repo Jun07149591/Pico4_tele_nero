@@ -25,6 +25,29 @@ def _fixed_schema(metadata):
     return result
 
 
+def _last_episode_number(root):
+    paths = [*(root / "episodes").glob("episode_*.h5"), *(root / ".inprogress").glob("episode_*.h5")]
+    numbers = [int(match[1]) for path in paths if (match := re.fullmatch(r"episode_(\d+)\.h5", path.name))]
+    sequence = root / "episode_sequence.json"
+    saved = json.loads(sequence.read_text())["last_episode_number"] if sequence.exists() else 0
+    if type(saved) is not int or saved < 0:
+        raise ValueError("invalid episode sequence")
+    return max([saved, len(paths), *numbers])
+
+
+def _save_episode_number(root, number):
+    destination = root / "episode_sequence.json"
+    temporary = destination.with_suffix(f".{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("x") as stream:
+            json.dump({"last_episode_number": number}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 class DatasetStore:
     def __init__(self, root, config, *, synthetic=False):
         self.root, self.config = Path(root).resolve(), config
@@ -113,6 +136,33 @@ class DatasetStore:
         finally:
             self.episode = None
 
+    def delete_episodes(self, identifiers):
+        from .quality import episode_path, review_path
+
+        if self.episode is not None:
+            raise ValueError("finish recording before deleting episodes")
+        if (not isinstance(identifiers, list) or not identifiers
+                or any(not isinstance(identifier, str) or not re.fullmatch(r"episode_\d+\.h5", identifier)
+                       for identifier in identifiers)
+                or len(set(identifiers)) != len(identifiers)):
+            raise ValueError("select distinct episode identifiers to delete")
+        paths = [episode_path(self.root, identifier) for identifier in identifiers]
+        for path in paths:
+            review = review_path(path)
+            if review.is_symlink() or (review.exists() and not review.is_file()):
+                raise ValueError("invalid episode review file")
+        # Preserve the high-water mark before removing the last numbered episode.
+        _save_episode_number(self.root, _last_episode_number(self.root))
+        deleted = []
+        try:
+            for path in paths:
+                path.unlink()
+                deleted.append(path.name)
+                review_path(path).unlink(missing_ok=True)
+        except OSError as exc:
+            raise OSError(f"episode deletion failed; deleted={deleted}: {exc}") from exc
+        return {"deleted": deleted}
+
     def __exit__(self, *_args):
         try:
             if self.episode is not None:
@@ -125,9 +175,9 @@ class EpisodeWriter:
     def __init__(self, root, config, task, provenance):
         config = copy.deepcopy(config)
         self.config = config
-        paths = [*(root / "episodes").glob("episode_*.h5"), *(root / ".inprogress").glob("episode_*.h5")]
-        numbers = [int(match[1]) for path in paths if (match := re.fullmatch(r"episode_(\d+)\.h5", path.name))]
-        self.identifier = f"episode_{max([len(paths), *numbers]) + 1:02d}"
+        number = _last_episode_number(root) + 1
+        _save_episode_number(root, number)
+        self.identifier = f"episode_{number:02d}"
         self.partial = root / ".inprogress" / f"{self.identifier}.h5"
         self.destination = root / "episodes" / f"{self.identifier}.h5"
         self.queue = queue.Queue(maxsize=config["writer_queue_frames"])

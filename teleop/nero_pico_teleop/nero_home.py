@@ -20,6 +20,8 @@ def load_home_pose(path, config):
     model = NeroKinematics(config)
     joints = model.quantize_command(np.deg2rad(vector(arm["joints_deg"], 7)))
     settings = {key: value for key, value in saved.items() if key != "arms"}
+    if "captured_on" in arm:
+        settings["captured_on"] = arm["captured_on"]
     bounds = {"joint_speed_deg_s": 120., "tcp_speed_m_s": .4,
               "angular_speed_deg_s": 60., "timeout_s": 120.,
               "arrival_joint_tolerance_deg": 1., "arrival_tcp_tolerance_m": .005,

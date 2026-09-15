@@ -28,9 +28,9 @@
         <div class="rate-field"><label for="capture-fps">采集频率 / Hz</label><div class="rate-control"><input id="capture-fps" type="number" min="1" max="30" step="1" value="30" inputmode="numeric" required><button id="apply-fps" class="icon-button" title="应用采集频率" aria-label="应用采集频率" disabled><i data-lucide="check"></i></button></div></div>
         <div class="counter"><strong id="elapsed">00:00.0</strong><span id="frame-count">0 帧</span></div>
         <div class="record-actions">
-          <button id="start" class="primary"><i data-lucide="circle"></i>开始录制</button>
-          <button id="success" class="success" disabled><i data-lucide="check"></i>成功保存</button>
-          <button id="failure" disabled><i data-lucide="x"></i>失败保存</button>
+          <button id="start" class="primary" aria-keyshortcuts="Space"><i data-lucide="circle"></i>开始录制</button>
+          <button id="success" class="success" aria-keyshortcuts="Space" disabled><i data-lucide="check"></i>成功保存</button>
+          <button id="failure" aria-keyshortcuts="L" disabled><i data-lucide="x"></i>失败保存</button>
           <button id="discard" class="icon-button" title="丢弃本段" aria-label="丢弃本段" disabled><i data-lucide="trash-2"></i></button>
         </div>
       </div>
@@ -40,6 +40,7 @@
     </section>
     <section id="episodes-view" class="view" hidden>
       <div class="section-heading"><h1>片段与质检</h1><select id="filter" aria-label="筛选片段"><option value="all">全部片段</option><option value="unreviewed">未检查</option><option value="pass">PASS</option><option value="fail">FAIL</option></select></div>
+      <div class="episode-selection"><label class="checkbox-line"><input id="select-episodes" type="checkbox">全选当前列表</label><span id="delete-count">已选 0 个片段</span><button id="delete-episodes" class="icon-button danger" title="删除所选片段" aria-label="删除所选片段" disabled><i data-lucide="trash-2"></i></button></div>
       <div class="replay-layout">
         <aside id="episode-list"></aside>
         <div id="empty-replay" class="empty">暂无选中的片段</div>
@@ -68,6 +69,14 @@
       <div class="dataset-location"><h2>原始数据目录</h2><p id="root" class="path"></p></div>
     </section>
   </main>
+  <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
+    <form method="dialog">
+      <h2 id="delete-title">删除片段</h2>
+      <p id="delete-description">所选片段的原始图像、状态、动作及质检记录将永久删除。已导出的数据集副本保留。</p>
+      <ul id="delete-list"></ul>
+      <div class="dialog-actions"><button id="cancel-delete" value="cancel" autofocus>取消</button><button id="confirm-delete" class="danger" type="button"><i data-lucide="trash-2"></i>删除</button></div>
+    </form>
+  </dialog>
   <footer><span>PICO 4 Ultra / XRoboToolkit / Nero</span><span id="footer-state">采集服务</span></footer>
 </body>
 </html>

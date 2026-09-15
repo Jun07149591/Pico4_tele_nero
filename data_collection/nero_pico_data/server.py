@@ -54,22 +54,28 @@ def create_server(controller, port=8765):
                         job = dict(export_job)
                     self.send({**controller.status(), "export": job})
                 elif parsed.path == "/api/episodes":
-                    self.send(list(reversed(list_episodes(controller.store.root))))
+                    with job_lock:
+                        values = list(reversed(list_episodes(controller.store.root)))
+                    self.send(values)
                 elif parsed.path == "/api/episode":
-                    path = episode_path(controller.store.root, params["id"])
-                    with h5py.File(path, "r") as file:
-                        values = {"state": file["state"][:].tolist(), "action": file["action"][:].tolist()}
-                    self.send({**summary(path), **values, "vector_names": controller.store.metadata["vector_names"],
-                               "quality": validate_episode(path, controller.store.metadata, decode_images=False)})
+                    with job_lock:
+                        path = episode_path(controller.store.root, params["id"])
+                        with h5py.File(path, "r") as file:
+                            values = {"state": file["state"][:].tolist(), "action": file["action"][:].tolist()}
+                        values.update(**summary(path), vector_names=controller.store.metadata["vector_names"],
+                                      quality=validate_episode(path, controller.store.metadata, decode_images=False))
+                    self.send(values)
                 elif parsed.path == "/api/frame":
-                    path = episode_path(controller.store.root, params["id"])
                     role, index = params["role"], int(params["index"])
                     if role not in controller.cameras:
                         raise ValueError("unknown camera role")
-                    with h5py.File(path, "r") as file:
-                        if not 0 <= index < len(file["timestamp"]):
-                            raise ValueError("frame outside episode")
-                        self.send(np.asarray(file[f"images/{role}"][index]).tobytes(), "image/jpeg")
+                    with job_lock:
+                        path = episode_path(controller.store.root, params["id"])
+                        with h5py.File(path, "r") as file:
+                            if not 0 <= index < len(file["timestamp"]):
+                                raise ValueError("frame outside episode")
+                            image = np.asarray(file[f"images/{role}"][index]).tobytes()
+                    self.send(image, "image/jpeg")
                 elif parsed.path == "/api/preview":
                     role = params["role"]
                     if role not in controller.cameras:

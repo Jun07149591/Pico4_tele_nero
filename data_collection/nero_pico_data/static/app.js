@@ -5,6 +5,8 @@ let firstPoll = true;
 let fpsEditing = false;
 let datasetNameRoot = null, renderedExportRoot = null;
 const exportSelection = new Set();
+const episodeSelection = new Set();
+let deleteCandidates = [];
 const roleNames = {front: '顶部相机', left_wrist: '左腕相机', right_wrist: '右腕相机'};
 const outcomes = {success: '成功', failure: '失败', discarded: '已丢弃', interrupted: '中断'};
 const states = {idle: '待机', recording: '录制中', saving: '保存中', error: '采集异常'};
@@ -71,6 +73,16 @@ function visibleExportEpisodes() {
   return orderedEpisodes().filter(item => (rate === 'all' || String(item.fps) === rate) && `${item.id} ${item.task}`.toLowerCase().includes(query));
 }
 function exportLocked() { return busy || !state || ['recording', 'saving'].includes(state.state) || state.export.state === 'running'; }
+function visibleEpisodes() { return episodes.filter(e => $('filter').value === 'all' || e.review.verdict === $('filter').value); }
+function renderDeleteSelection() {
+  const visible = visibleEpisodes(), locked = exportLocked();
+  $('delete-count').textContent = `已选 ${episodeSelection.size} 个片段`;
+  $('select-episodes').checked = visible.length > 0 && visible.every(item => episodeSelection.has(item.id));
+  $('select-episodes').indeterminate = visible.some(item => episodeSelection.has(item.id)) && !$('select-episodes').checked;
+  $('select-episodes').disabled = locked || !visible.length;
+  $('delete-episodes').disabled = locked || !episodeSelection.size;
+  document.querySelectorAll('#episode-list input').forEach(input => { input.disabled = locked; });
+}
 function renderExportEpisodes() {
   const eligible = new Set(episodes.filter(exportable).map(item => item.id));
   for (const id of exportSelection) if (!eligible.has(id)) exportSelection.delete(id);
@@ -114,6 +126,11 @@ function renderExportSelection() {
   });
 }
 function renderEpisodes() {
+  for (const id of episodeSelection) if (!episodes.some(item => item.id === id)) episodeSelection.delete(id);
+  if (selected && !episodes.some(item => item.id === selected.id)) {
+    selected = null; playing = false; updatePlayIcon();
+    $('replay').hidden = true; $('empty-replay').hidden = false; $('replay-cameras').replaceChildren();
+  }
   $('episode-count').textContent = episodes.length;
   $('accepted').textContent = episodes.filter(e => e.outcome === 'success' && e.review.verdict === 'pass').length;
   $('pending').textContent = episodes.filter(e => e.review.verdict === 'unreviewed').length;
@@ -125,11 +142,16 @@ function renderEpisodes() {
     row.onclick = () => { showView('episodes'); openEpisode(item.id); }; $('recent-list').append(row);
   });
   $('episode-list').replaceChildren();
-  episodes.filter(e => $('filter').value === 'all' || e.review.verdict === $('filter').value).forEach(item => {
+  visibleEpisodes().forEach(item => {
+    const choice = document.createElement('div'); choice.className = 'episode-choice';
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
+    checkbox.setAttribute('aria-label', `选择片段 ${item.id}`); checkbox.checked = episodeSelection.has(item.id);
+    checkbox.onchange = () => { if (checkbox.checked) episodeSelection.add(item.id); else episodeSelection.delete(item.id); renderDeleteSelection(); };
     const row = document.createElement('button'); row.className = `episode-item${selected?.id === item.id ? ' current' : ''}`;
-    row.append(textNode('strong', item.task), textNode('small', `${outcomes[item.outcome]} · ${item.frames} 帧 · ${item.seconds.toFixed(1)} s`), verdict(item));
-    row.onclick = () => openEpisode(item.id); $('episode-list').append(row);
+    row.append(textNode('strong', item.task), textNode('small', `${item.id} · ${outcomes[item.outcome]} · ${item.frames} 帧 · ${item.seconds.toFixed(1)} s`), verdict(item));
+    row.onclick = () => openEpisode(item.id); choice.append(checkbox, row); $('episode-list').append(choice);
   });
+  renderDeleteSelection();
   renderExportEpisodes();
   renderStatus();
 }
@@ -162,7 +184,7 @@ async function command(commandName, values = {}) {
   if (busy) return; busy = true; message(); renderStatus();
   try { const result = await api('/api/command', {command: commandName, ...values}); await refreshEpisodes(); return result; }
   catch (error) { message(error.message); }
-  finally { busy = false; await poll(); }
+  finally { const refreshed = await poll(); busy = false; if (refreshed) renderStatus(); }
 }
 function renderStatus() {
   if (!state) return;
@@ -196,6 +218,7 @@ function renderStatus() {
   $('start').disabled = busy || !state.ready || recording || state.state === 'saving' || exporting || taskMissing || rateChanged;
   ['success', 'failure', 'discard'].forEach(id => $(id).disabled = busy || !recording);
   $('task').disabled = busy || recording;
+  renderDeleteSelection();
   renderExportSelection();
   if (state.export.state === 'running') {
     const progress = state.export.progress;
@@ -235,10 +258,29 @@ async function poll() {
       if (camera && image) image.parentElement.querySelector('figcaption span').textContent = camera.ready ? `${Math.round(camera.age_ms)} ms` : '无有效画面';
     }
     if (seenEpisode !== state.last_episode) { seenEpisode = state.last_episode; await refreshEpisodes(); }
-  } catch (error) { $('connection').textContent = '服务离线'; $('connection').className = 'status bad'; $('start').disabled = true; }
+    return true;
+  } catch (error) { $('connection').textContent = '服务离线'; $('connection').className = 'status bad'; $('start').disabled = true; return false; }
 }
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => showView(button.dataset.view));
 $('all-episodes').onclick = () => showView('episodes'); $('filter').onchange = renderEpisodes; $('task').oninput = renderStatus;
+$('select-episodes').onchange = () => {
+  const checked = $('select-episodes').checked;
+  visibleEpisodes().forEach(item => checked ? episodeSelection.add(item.id) : episodeSelection.delete(item.id));
+  renderEpisodes();
+};
+$('delete-episodes').onclick = () => {
+  if (exportLocked() || !episodeSelection.size) return;
+  deleteCandidates = orderedEpisodes().filter(item => episodeSelection.has(item.id)).map(item => item.id);
+  $('delete-title').textContent = `删除 ${deleteCandidates.length} 个片段`;
+  $('delete-list').replaceChildren(...deleteCandidates.map(id => textNode('li', `${id} · ${episodes.find(item => item.id === id).task}`)));
+  $('delete-dialog').showModal();
+};
+$('confirm-delete').onclick = async () => {
+  const episode_ids = [...deleteCandidates];
+  $('delete-dialog').close(); playing = false; updatePlayIcon();
+  await command('delete', {episode_ids});
+  await refreshEpisodes();
+};
 $('capture-fps').oninput = () => { fpsEditing = true; renderStatus(); };
 $('apply-fps').onclick = async () => { const result = await command('configure', {fps: Number($('capture-fps').value)}); if (result) { fpsEditing = false; renderStatus(); } };
 $('capture-fps').onkeydown = event => { if (event.key === 'Enter' && !$('apply-fps').disabled) $('apply-fps').click(); };
@@ -252,6 +294,19 @@ $('repo-id').oninput = () => {
 $('allow-synthetic').onchange = renderExportSelection;
 $('start').onclick = () => command('start', {task: $('task').value});
 ['success', 'failure', 'discard'].forEach(id => $(id).onclick = () => command('finish', {outcome: id === 'discard' ? 'discarded' : id}));
+document.addEventListener('keydown', event => {
+  if (activeView !== 'capture' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey
+      || $('delete-dialog').open || event.defaultPrevented) return;
+  const field = event.target.closest('input, textarea, select');
+  if ((field && !field.disabled) || event.target.isContentEditable) return;
+  const space = event.code === 'Space' || event.key === ' ';
+  const failure = event.code === 'KeyL' || event.key.toLowerCase() === 'l';
+  if (!space && !failure) return;
+  event.preventDefault();
+  if (event.repeat || busy || !state) return;
+  const button = $(space ? (state.state === 'recording' ? 'success' : 'start') : 'failure');
+  if (!button.disabled) button.click();
+});
 ['pass', 'fail', 'unreview'].forEach(id => $(id).onclick = async () => {
   if (!selected) return; const result = await command('review', {id: selected.id, verdict: id === 'unreview' ? 'unreviewed' : id, notes: $('notes').value});
   if (result) { selected.review = result.review; renderEpisodes(); }

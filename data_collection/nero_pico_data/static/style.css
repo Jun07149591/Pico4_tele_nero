@@ -54,6 +54,18 @@ input:disabled { opacity: .65; cursor: not-allowed; }
 .primary:hover:not(:disabled) { background: #10593f; border-color: #10593f; }
 .success { color: #0f6e4c; background: #ecf7ef; border-color: #bfd6c6; }
 .icon-button { width: 38px; min-width: 38px; padding: 0; }
+.danger { color: #ac3c30; border-color: #ddbcb5; }
+.danger:hover:not(:disabled) { background: #fff0ec; border-color: #bd6557; }
+dialog { width: min(480px, calc(100% - 32px)); max-height: calc(100% - 48px); padding: 24px; border: 1px solid #ccd4d0; border-radius: 6px; color: #23302d; background: #fff; }
+dialog::backdrop { background: rgb(20 30 25 / 35%); }
+dialog p { font-size: 13px; line-height: 1.7; }
+#delete-list { padding-left: 20px; max-height: 240px; overflow: auto; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.episode-selection { display: flex; align-items: center; gap: 16px; padding: 10px 0 18px; margin-bottom: 18px; border-bottom: 1px solid #d1ddd4; }
+.episode-selection .checkbox-line { margin: 0; }
+#delete-count { flex: 1; text-align: right; color: #607268; font-size: 12px; }
+.episode-choice { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 6px; }
+.episode-choice input, #select-episodes { accent-color: #147651; width: 16px; height: 16px; margin: 0; }
 .capture-footer { display: flex; justify-content: space-between; gap: 15px; padding: 13px 0; color: #6e7c73; font-size: 12px; }
 #readiness { overflow-wrap: anywhere; text-align: right; }
 .recent-heading { margin-top: 20px; }

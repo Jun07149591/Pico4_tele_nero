@@ -26,7 +26,7 @@ from nero_pico_teleop.pico_input_guard import InputGuard
 CONFIG = PROJECT_ROOT / "config/nero_humanoid_config.json"
 HOME = PROJECT_ROOT / "config/home_poses.json"
 CAPTURED = {
-    "right_arm": [2.646, 83.261, -90.751, -16.052, -.77, -5.139, -72.295],
+    "right_arm": [-44.41, 84.47, -87.622, -56.013, .415, -3.385, -66.1],
     "left_arm": [3.676, 87.142, -95.026, 28.062, 1.843, .364, 64.113],
 }
 
@@ -64,6 +64,8 @@ class HomePoseTests(unittest.TestCase):
             self.assertEqual(config["arm"]["can_channel"], channel)
             self.assertTrue(config["home_pose"]["on_startup"])
             self.assertEqual(config["home_pose"]["can_commands_sent"], 0)
+            self.assertEqual(config["home_pose"]["captured_on"],
+                             "2026-09-15T16:20:04" if arm_id == "right_arm" else "2026-09-13")
 
     def test_wrong_arm_binding_model_and_invalid_settings_rejected(self):
         config = load_config(CONFIG)
@@ -89,7 +91,8 @@ class HomePoseTests(unittest.TestCase):
             home = config["home_pose"]
             model = NeroKinematics(config)
             goal = np.asarray(config["home_pose"]["joints_rad"])
-            current = model.quantize_command(goal + np.deg2rad([12., -8., 7., -6., 3., 4., 5.]))
+            current = model.quantize_command(np.clip(goal + np.deg2rad([12., -8., 7., -6., 3., 4., 5.]),
+                                                     model.command_lower, model.command_upper))
             for index in range(5000):
                 dt = (.014, .021, .08)[index % 3]
                 candidate = home_step(model, current, goal, dt, config)
@@ -608,6 +611,9 @@ class HomeOutputTests(unittest.TestCase):
     def test_startup_accepts_recorded_static_home_residual_without_changing_goal(self):
         output, source = self.outputs["right_arm"], self.sources["right_arm"]
         channel = output.arm._config["comm"]["can"]["channel"]
+        recorded_goal = np.deg2rad([2.646, 83.261, -90.751, -16.052, -.77, -5.139, -72.295])
+        for config in (output.config, self.targets["right_arm"]):
+            config["home_pose"]["joints_rad"] = recorded_goal.tolist()
         measured = np.deg2rad([2.605, 83.248, -90.746, -15.762, -.567, -5.171, -72.027])
         self.feedback[channel] = measured.copy()
         output.last_target = output.ik.quantize_command(measured)
@@ -640,7 +646,7 @@ class HomeOutputTests(unittest.TestCase):
         self.assertGreaterEqual(self.now - output.home_stable_since, output.config["home_pose"]["arrival_stable_s"])
         self.assertTrue(stopped[0])
         np.testing.assert_array_equal(self.feedback[channel], measured)
-        np.testing.assert_allclose(np.rad2deg(output.last_target), CAPTURED["right_arm"])
+        np.testing.assert_allclose(output.last_target, recorded_goal)
         self.assertEqual(self.outputs["left_arm"].frames_sent, 0)
 
     def test_session_dispatches_secondary_button_return_after_ready(self):
