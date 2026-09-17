@@ -159,11 +159,14 @@ PICO 页面显示 TCP 连接失败时，检查 PC Service 是否监听、头显�
 采集需要遥操程序通过本机 socket 发布遥测。启动采集服务：
 
 ```bash
-mkdir -p data/right_arm
-bash scripts/data.sh serve --mode single --root data/right_arm --port 8765
+bash scripts/data.sh serve --mode single --port 8765
 ```
 
-浏览器打开 <http://127.0.0.1:8765>。在“采集”页填写任务，点击开始和成功/失败；在“片段与质检”页回放并标记 PASS；在“导出”页勾选同一频率的片段，填写 `namespace/dataset` 名称后导出。双臂采集使用 `--mode dual` 和独立的数据根目录。
+不传 `--root` 时，单臂默认保存到 `<项目目录>/data/right_arm`，双臂 `--mode dual` 默认保存到 `<项目目录>/data/dual_arm`。目录随项目位置解析并自动创建，从其他工作目录调用脚本也不会改变默认位置。启动终端会打印实际保存路径。
+
+浏览器打开 <http://127.0.0.1:8765>。在“采集”页填写任务，点击开始和成功/失败；在“片段与质检”页回放并标记 PASS；在“导出”页勾选同一频率的片段，填写 `namespace/dataset` 名称后导出。
+
+可用 `--root /path/to/dataset` 指定其他目录；显式传入的相对路径按终端当前工作目录解析。旧数据不会自动迁移，继续采集旧目录时仍需指定它。`data/` 不上传 GitHub，移植已有数据时需另行复制数据目录。
 
 导出目录示例：
 
@@ -180,8 +183,7 @@ data/right_arm/exports/nero_pick_place_20260914T120000_000000/local/nero_pick_pl
 完整操作、按钮含义、保存/导出区别和常见问题见 [中文使用手册](docs/USAGE_ZH.md)。无需连接 PICO、机械臂或相机，可以先运行合成数据演示：
 
 ```bash
-bash scripts/data.sh demo --root data/demo --port 8766
+bash scripts/data.sh demo --port 8766
 ```
 
-演示网页为 <http://127.0.0.1:8766>，会显示模拟数据标识，不控制真实硬件。
-
+演示网页为 <http://127.0.0.1:8766>，默认写入 `<项目目录>/data/demo`，会显示模拟数据标识，不控制真实硬件。

@@ -147,16 +147,34 @@ bash scripts/start_teleop.sh --dual --confirm-clearance --enable-joints --durati
 在另一个终端启动采集网页，保持遥操运行：
 
 ```bash
-bash scripts/data.sh serve --mode single --root data/right_arm --port 8765
+bash scripts/data.sh serve --mode single --port 8765
 ```
 
 双臂使用独立目录：
 
 ```bash
-bash scripts/data.sh serve --mode dual --root data/dual_arm --port 8765
+bash scripts/data.sh serve --mode dual --port 8765
 ```
 
 模式必须与遥操一致；两种服务不能同时使用同一个端口或同一个录制目录。顶层遥操入口自动发送遥测到 `/tmp/nero_pico_data_<UID>.sock`。同一用户可以先开网页或先开遥操，连接就绪后即可开始采集。
+
+### 数据保存位置
+
+`serve` 和终端采集命令 `record` 不传 `--root` 时，根据实际采集模式自动选择项目内目录；模式来自 `--mode`，未指定时使用相机配置中的 `mode`。
+
+| 模式 | 默认目录 |
+| --- | --- |
+| 单臂 | `<项目目录>/data/right_arm` |
+| 双臂 | `<项目目录>/data/dual_arm` |
+| 模拟演示 `demo` | `<项目目录>/data/demo` |
+
+默认目录相对于脚本所属的项目解析，不依赖终端当前工作目录，也不依赖原电脑用户名。启动时自动创建目录并打印绝对路径，网页“导出”页下方也显示原始数据目录。
+
+需要独立任务目录或外部硬盘时，可显式传入 `--root /path/to/dataset`。显式相对路径仍按终端当前工作目录解析，例如在项目根目录运行 `--root data/pick_place`。`review`、`validate`、`export` 操作现有数据，仍要求明确传入 `--root`。
+
+旧目录中的数据不会自动迁移，也不会合并到新的默认目录。继续采集旧数据时传入旧目录；移植已有数据时，在采集和导出均停止后，将整个数据根目录复制到新机器，再指定复制后的目录。原始片段、质检记录、manifest 和编号记录应一起保留。`data/` 被 Git 忽略，克隆 GitHub 项目不包含已采集的数据。
+
+### 网页操作
 
 浏览器打开 <http://127.0.0.1:8765>：
 

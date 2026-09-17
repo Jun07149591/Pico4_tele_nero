@@ -3,7 +3,7 @@ from contextlib import ExitStack
 import json
 from pathlib import Path
 
-from .schema import DEFAULT_CONFIG, default_socket, load_config
+from .schema import DEFAULT_CONFIG, ROOT, default_socket, load_config
 
 
 def main(argv=None):
@@ -17,7 +17,9 @@ def main(argv=None):
         command = commands.add_parser(name)
         command.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
         command.add_argument("--mode", choices=("single", "dual"))
-        command.add_argument("--root", type=Path, required=True)
+        command.add_argument("--root", type=Path,
+                             help="dataset directory (default: project/data/right_arm, dual_arm, or demo; "
+                                  "explicit relative paths use the current working directory)")
         command.add_argument("--socket", type=Path, default=default_socket())
         if name != "record":
             command.add_argument("--port", type=int, default=8765)
@@ -57,8 +59,12 @@ def main(argv=None):
             config, synthetic = metadata["config"], metadata["synthetic"]
         else:
             config, synthetic = load_config(args.config, args.mode), args.command == "demo"
+            if args.root is None:
+                folder = "demo" if synthetic else {"single": "right_arm", "dual": "dual_arm"}[config["mode"]]
+                args.root = ROOT.parent / "data" / folder
         with ExitStack() as stack:
             store = stack.enter_context(DatasetStore(args.root, config, synthetic=synthetic))
+            print(f"NeroPicoData: dataset root: {store.root}", flush=True)
             if args.command == "review":
                 receiver = TelemetryReceiver(default_socket())
                 cameras = {role: Camera(settings, config["image_width"], config["image_height"])

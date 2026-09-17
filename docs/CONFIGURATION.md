@@ -36,6 +36,12 @@
 
 `data_collection/config/capture.json` 是模板，序列号为 `SET_*`。运行 `scripts/configure_cameras.sh` 后生成被 `.gitignore` 忽略的 `capture.local.json`。它只保存设备序列号、分辨率和相机帧率，不包含录制数据。
 
+## 数据目录
+
+采集命令 `serve` / `record` 省略 `--root` 时，默认在项目根目录下创建 `data/right_arm`（单臂）或 `data/dual_arm`（双臂）；`demo` 使用 `data/demo`。默认位置由项目安装位置决定，不使用原电脑的绝对路径，也不随终端工作目录变化。
+
+显式指定 `--root` 可覆盖默认位置，显式相对路径以当前工作目录为基准。启动时会打印最终绝对路径。旧数据不会自动迁移，`review` / `validate` / `export` 仍需明确指定数据根目录。
+
 ## 环境变量
 
 | 变量 | 用途 |
