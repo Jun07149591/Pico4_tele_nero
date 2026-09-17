@@ -35,8 +35,11 @@
         </div>
       </div>
       <div class="capture-footer"><span id="record-state">待机</span><span id="readiness">等待遥操数据</span></div>
-      <div class="section-heading recent-heading"><h2>最近片段</h2><button id="all-episodes" class="text-button">全部片段<i data-lucide="arrow-right"></i></button></div>
-      <div id="recent-list" class="episode-table"></div>
+      <div class="section-heading capture-stats-heading"><h2>当前数据集统计</h2><button id="all-episodes" class="text-button">全部片段<i data-lucide="arrow-right"></i></button></div>
+      <dl class="capture-stats" aria-label="已保存片段统计">
+        <div class="outcome-success"><dt><i data-lucide="circle-check"></i>成功</dt><dd><strong id="success-count">--</strong><span>条</span></dd></div>
+        <div class="outcome-failure"><dt><i data-lucide="circle-x"></i>失败</dt><dd><strong id="failure-count">--</strong><span>条</span></dd></div>
+      </dl>
     </section>
     <section id="episodes-view" class="view" hidden>
       <div class="section-heading"><h1>片段与质检</h1><select id="filter" aria-label="筛选片段"><option value="all">全部片段</option><option value="unreviewed">未检查</option><option value="pass">PASS</option><option value="fail">FAIL</option></select></div>

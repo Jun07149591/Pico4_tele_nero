@@ -40,6 +40,8 @@ def main():
                 expect(page.locator('#start')).to_be_disabled()
                 expect(page.locator('#readiness')).to_have_text('任务指令未填写')
                 expect(page.locator('#success')).to_be_disabled()
+                expect(page.locator('#success-count')).to_have_text('0')
+                expect(page.locator('#failure-count')).to_have_text('0')
                 expect(page.locator('#capture-fps')).to_have_value('30')
                 page.locator('#capture-fps').fill('31')
                 expect(page.locator('#apply-fps')).to_be_disabled()
@@ -75,6 +77,8 @@ def main():
                 page.locator('#failure').focus()
                 page.keyboard.press('Space')
                 expect(page.locator('#episode-count')).to_have_text('1')
+                expect(page.locator('#success-count')).to_have_text('1')
+                expect(page.locator('#failure-count')).to_have_text('0')
                 assert controller.status()['last_episode'] == 'episode_01.h5'
                 assert json.loads(page.request.get(f'http://127.0.0.1:{server.server_port}/api/episodes').text())[0]['outcome'] == 'success'
                 page.screenshot(path=str(artifacts / "workbench-desktop.png"), full_page=True)
@@ -193,6 +197,8 @@ def main():
                 page.locator('#capture-view h1').click()
                 page.keyboard.press('l')
                 expect(page.locator('#episode-count')).to_have_text('4')
+                expect(page.locator('#success-count')).to_have_text('3')
+                expect(page.locator('#failure-count')).to_have_text('1')
                 assert controller.status()['state'] == 'idle'
                 assert controller.status()['skipped_frames'] > 0
                 page.locator('[data-view=episodes]').click()
@@ -220,6 +226,8 @@ def main():
                 assert len(list((export_path / 'videos').rglob('*.mp4'))) == 4
                 page.reload()
                 expect(page.locator('#episode-count')).to_have_text('2')
+                expect(page.locator('#success-count')).to_have_text('2')
+                expect(page.locator('#failure-count')).to_have_text('0')
                 source.stop.clear()
                 source.__enter__()
                 page.locator('[data-view=capture]').click()
@@ -234,6 +242,8 @@ def main():
                 assert controller.status()['frames'] >= 25
                 page.keyboard.press('L')
                 expect(page.locator('#episode-count')).to_have_text('3')
+                expect(page.locator('#success-count')).to_have_text('2')
+                expect(page.locator('#failure-count')).to_have_text('1')
                 assert controller.status()['last_episode'] == 'episode_05.h5'
                 assert not errors, errors
                 print(json.dumps({"browser_errors": errors, "desktop": [1440, 1000], "mobile": [390, 844],

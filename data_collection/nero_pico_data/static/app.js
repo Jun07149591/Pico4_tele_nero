@@ -134,13 +134,8 @@ function renderEpisodes() {
   $('episode-count').textContent = episodes.length;
   $('accepted').textContent = episodes.filter(e => e.outcome === 'success' && e.review.verdict === 'pass').length;
   $('pending').textContent = episodes.filter(e => e.review.verdict === 'unreviewed').length;
-  $('recent-list').replaceChildren();
-  if (!episodes.length) $('recent-list').append(textNode('div', '暂无片段', 'empty'));
-  episodes.slice(0, 5).forEach(item => {
-    const row = document.createElement('button'); row.className = 'episode-row';
-    row.append(textNode('span', item.task), textNode('span', outcomes[item.outcome]), textNode('span', `${item.seconds.toFixed(1)} s`), verdict(item));
-    row.onclick = () => { showView('episodes'); openEpisode(item.id); }; $('recent-list').append(row);
-  });
+  $('success-count').textContent = episodes.filter(e => e.outcome === 'success').length;
+  $('failure-count').textContent = episodes.filter(e => e.outcome === 'failure').length;
   $('episode-list').replaceChildren();
   visibleEpisodes().forEach(item => {
     const choice = document.createElement('div'); choice.className = 'episode-choice';

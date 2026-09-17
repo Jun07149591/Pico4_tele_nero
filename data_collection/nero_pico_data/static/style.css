@@ -68,11 +68,17 @@ dialog p { font-size: 13px; line-height: 1.7; }
 .episode-choice input, #select-episodes { accent-color: #147651; width: 16px; height: 16px; margin: 0; }
 .capture-footer { display: flex; justify-content: space-between; gap: 15px; padding: 13px 0; color: #6e7c73; font-size: 12px; }
 #readiness { overflow-wrap: anywhere; text-align: right; }
-.recent-heading { margin-top: 20px; }
+.capture-stats-heading { margin-top: 20px; }
 .text-button { border: none; background: none; color: #367059; padding: 0; }
-.episode-table { border-top: 1px solid #dbe3de; }
-.episode-row { width: 100%; height: auto; min-height: 51px; display: grid; grid-template-columns: minmax(120px, 1fr) 90px 65px 100px; padding: 10px 0; border: none; border-bottom: 1px solid #dbe3de; border-radius: 0; background: none; text-align: left; justify-content: initial; font-size: 12px; white-space: normal; gap: 10px; }
-.episode-row > span:first-child { overflow-wrap: anywhere; }
+.capture-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 22px 0; border-top: 1px solid #dbe3de; border-bottom: 1px solid #dbe3de; }
+.capture-stats > div { min-width: 0; padding: 0 24px; }
+.capture-stats > div:first-child { padding-left: 0; border-right: 1px solid #dbe3de; }
+.capture-stats dt { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.capture-stats dd { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+.capture-stats strong { font-size: 32px; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.capture-stats dd span { color: #6c7e71; font-size: 12px; }
+.outcome-success { color: #0f6e4c; }
+.outcome-failure { color: #ac3c30; }
 .verdict { font-size: 11px; color: #68756d; }
 .verdict.pass { color: #08754c; }
 .verdict.fail { color: #b34839; }
@@ -145,7 +151,7 @@ footer { min-height: 46px; border-top: 1px solid #e0e7e2; display: flex; align-i
   nav { padding: 0 16px; gap: 21px; }.tab { font-size: 12px; gap: 6px; }.tab svg { width: 14px; }
   main { padding: 20px 16px 28px; }.section-heading { gap: 10px; }h1 { font-size: 18px; }.metrics { flex-direction: column; align-items: flex-end; gap: 4px; font-size: 10px; }.camera-grid { grid-template-columns: minmax(0, 1fr); }
   .task-field { flex-basis: 100%; }.counter { align-items: flex-start; }.record-actions { flex-basis: auto; gap: 6px; }.record-actions button { padding: 0 9px; font-size: 12px; }.record-actions .icon-button { padding: 0; }.capture-footer { align-items: flex-start; }.capture-footer > span:first-child { white-space: nowrap; }
-  .episode-row { grid-template-columns: minmax(80px, 1fr) 57px 44px 55px; font-size: 10px; gap: 8px; }.replay-layout { display: flex; flex-direction: column; }#episode-list { max-height: 220px; border-right: 0; border-bottom: 1px solid #d5dfd7; padding-right: 0; }.episode-item { padding: 12px 8px; }.timeline output { font-size: 10px; min-width: 83px; }
+  .replay-layout { display: flex; flex-direction: column; }#episode-list { max-height: 220px; border-right: 0; border-bottom: 1px solid #d5dfd7; padding-right: 0; }.episode-item { padding: 12px 8px; }.timeline output { font-size: 10px; min-width: 83px; }
   .export-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; }.export-summary strong { font-size: 25px; }#export-view .section-heading { align-items: flex-start; flex-direction: column; }footer { padding: 12px 16px; font-size: 10px; }
   .rate-field { flex-basis: 146px; }.counter { margin-left: auto; }
   .export-filters { width: 100%; }.export-filters input { flex: 1; width: 0; }.export-filters select { max-width: 120px; }
