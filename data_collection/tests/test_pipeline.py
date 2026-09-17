@@ -172,6 +172,7 @@ class StorageTests(unittest.TestCase):
                 for path in (paths[0], paths[2]):
                     self.assertFalse(path.exists())
                     self.assertFalse(path.with_suffix(".review.json").exists())
+                    self.assertFalse(path.with_suffix("").exists())
                 self.assertTrue(paths[1].exists())
                 self.assertEqual(export.read_bytes(), b"independent exported copy")
             with DatasetStore(root, cfg, synthetic=True) as store:
@@ -279,8 +280,11 @@ class StorageTests(unittest.TestCase):
                 write_review(source / "episodes" / identifiers[1], "fail", "excluded")
                 with self.assertRaisesRegex(ValueError, "successful with PASS"):
                     select_episodes(source, [identifiers[1]])
-            report = export_dataset(source, destination, "local/selected", allow_synthetic=True,
-                                    episode_ids=[identifiers[2], identifiers[0]])
+            with patch("nero_pico_data.export.StreamingEpisode", side_effect=AssertionError("native export must not encode")), \
+                    patch("nero_pico_data.export.read_rgb", side_effect=AssertionError("native export must not decode")):
+                report = export_dataset(source, destination, "local/selected", allow_synthetic=True,
+                                        episode_ids=[identifiers[2], identifiers[0]])
+            self.assertEqual((report["reused_video_episodes"], report["converted_legacy_episodes"]), (2, 0))
             self.assertEqual((report["episodes"], report["frames"], report["fps"]), (2, 12, 30))
             provenance = json.loads((destination / "meta/nero_provenance.json").read_text())
             spec = json.loads((destination / "meta/nero_openpi.json").read_text())
@@ -303,7 +307,10 @@ class StorageTests(unittest.TestCase):
                 self.assertEqual(table.num_rows, item["frames"])
                 self.assertEqual(table["episode_index"].unique().to_pylist(), [item["episode_index"]])
                 self.assertEqual(table["frame_index"].to_pylist(), list(range(item["frames"])))
-                for filename in item["videos"].values():
+                for role, filename in item["videos"].items():
+                    recorded = (source / "episodes" / Path(item["source"]).stem /
+                                f"videos/chunk-000/observation.images.{role}/episode_000000.mp4")
+                    self.assertEqual((destination / filename).read_bytes(), recorded.read_bytes())
                     with av.open(str(destination / filename)) as video:
                         self.assertEqual(video.streams.video[0].average_rate, 30)
                         self.assertEqual(video.streams.video[0].codec_context.name, "h264")
@@ -385,12 +392,15 @@ class StorageTests(unittest.TestCase):
         cfg = config()
         with tempfile.TemporaryDirectory() as root, DatasetStore(root, cfg, synthetic=True) as store:
             writer = store.start("pick", {})
-            with patch("nero_pico_data.storage.cv2.imencode", return_value=(False, None)):
-                writer.append(sample(0, cfg))
-                with self.assertRaisesRegex(RuntimeError, "inprogress"):
-                    store.finish("interrupted")
+            invalid = sample(0, cfg)
+            invalid["images"]["front"] = Frame(np.zeros((1, 2, 3), dtype=np.uint8), 1., 1000., 0)
+            writer.append(invalid)
+            with self.assertRaisesRegex(RuntimeError, "inprogress.*invalid RGB"):
+                store.finish("interrupted")
             self.assertEqual(len(list((Path(root) / ".inprogress").glob("*.h5"))), 1)
             self.assertFalse(list((Path(root) / "episodes").glob("*.h5")))
+            self.assertTrue((writer.partial.with_suffix("") / ".recording-incomplete").exists())
+            self.assertFalse(writer.worker.is_alive())
 
 
 class ControllerTests(unittest.TestCase):

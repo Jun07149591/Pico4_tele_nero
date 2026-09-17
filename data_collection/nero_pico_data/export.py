@@ -1,16 +1,15 @@
-import hashlib
+import copy
 import json
 from pathlib import Path
 import re
 import shutil
+import tempfile
 
 import h5py
 
 from .quality import episode_path, list_episodes, validate_episode
 from .storage import read_rgb
-
-
-LEROBOT_REVISION = "0cf864870cf29f4738d3ade893e6fd13fbd7cdb5"
+from .lerobot_io import IMAGE_STORAGE, LEROBOT_REVISION, StreamingEpisode, create_metadata, native_root, sha256, table_stats
 
 
 def select_episodes(root, episode_ids=None):
@@ -35,24 +34,11 @@ def select_episodes(root, episode_ids=None):
 
 
 def export_dataset(root, destination, repo_id, *, allow_synthetic=False, episode_ids=None, progress=None):
+    import numpy as np
+    import pyarrow as pa
     import pyarrow.parquet as pq
-    from lerobot.common.datasets.lerobot_dataset import CODEBASE_VERSION, LeRobotDataset
-    from lerobot.common.datasets.video_utils import encode_video_frames
+    from lerobot.common.datasets.lerobot_dataset import LeRobotDatasetMetadata
 
-    class VideoDataset(LeRobotDataset):
-        def encode_episode_videos(self, episode_index):
-            # The pinned writer has no codec option; use its encoder with H.264
-            # for both standard LeRobot decoding and ordinary video players.
-            paths = {}
-            for key in self.meta.video_keys:
-                path = self.root / self.meta.get_video_file_path(episode_index, key)
-                images = self._get_image_file_path(episode_index, key, 0).parent
-                encode_video_frames(images, path, self.fps, vcodec="h264", crf=18, overwrite=True)
-                paths[key] = str(path)
-            return paths
-
-    if CODEBASE_VERSION != "v2.1":
-        raise RuntimeError(f"OpenPI requires pinned LeRobot v2.1; installed {CODEBASE_VERSION}")
     if not re.fullmatch(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+", repo_id):
         raise ValueError("repo_id must be namespace/dataset")
     root, destination = Path(root).resolve(), Path(destination).resolve()
@@ -64,49 +50,83 @@ def export_dataset(root, destination, repo_id, *, allow_synthetic=False, episode
     selected = select_episodes(root, episode_ids)
     fps = selected[0]["fps"]
     checked = []
-    for info in selected:
+    for index, info in enumerate(selected):
+        if progress:
+            progress({"completed": index, "total": len(selected), "episode": info["id"], "phase": "validating"})
         path = episode_path(root, info["id"])
-        qc = validate_episode(path, metadata)
+        # Native recordings already contain encoded frames. Check all file hashes
+        # and table alignment instead of decoding every pixel again on each export.
+        qc = validate_episode(path, metadata, decode_images=info["image_storage"] != IMAGE_STORAGE, verify_hashes=True)
         if not qc["ok"]:
             raise ValueError(f"accepted episode failed validation: {path.name}: {qc['issues']}")
         checked.append((path, info, qc))
-    config = metadata["config"]
-    names, dim = metadata["vector_names"], len(metadata["vector_names"])
-    features = {"observation.state": {"dtype": "float32", "shape": (dim,), "names": names},
-                "action": {"dtype": "float32", "shape": (dim,), "names": names}}
-    for role in config["cameras"]:
-        features[f"observation.images.{role}"] = {"dtype": "video",
-            "shape": (config["image_height"], config["image_width"], 3), "names": ["height", "width", "channels"]}
-    dataset = VideoDataset.create(repo_id=repo_id, root=destination, fps=fps,
-                                 robot_type=metadata["robot_type"], features=features, use_videos=True,
-                                 image_writer_threads=2, video_backend="pyav")
+    config = {**metadata["config"], "fps": fps}
+    output = create_metadata(destination, config, repo_id)
     marker = destination / ".export-incomplete"
     marker.touch()
     sources = []
-    try:
-        for episode_index, (path, info, qc) in enumerate(checked):
-            name = Path(dataset.meta.get_data_file_path(episode_index)).stem
-            if progress:
-                progress({"completed": episode_index, "total": len(checked), "episode": name})
-            with h5py.File(path, "r") as file:
-                for index in range(len(file["timestamp"])):
-                    if index % fps == 0 and shutil.disk_usage(destination).free < config["minimum_free_gb"] * 1e9:
-                        raise RuntimeError("disk space reserve reached; export kept incomplete")
-                    frame = {"observation.state": file["state"][index], "action": file["action"][index],
-                             "task": str(file.attrs["task"])}
-                    frame.update({f"observation.images.{role}": read_rgb(file, role, index) for role in config["cameras"]})
-                    dataset.add_frame(frame)
-                dataset.save_episode()
-            with path.open("rb") as stream:
-                digest = hashlib.file_digest(stream, "sha256").hexdigest()
-            videos = {role: str(dataset.meta.get_video_file_path(episode_index, f"observation.images.{role}"))
-                      for role in config["cameras"]}
+    reused = 0
+    for episode_index, (path, info, qc) in enumerate(checked):
+        name = Path(output.get_data_file_path(episode_index)).stem
+        native = info["image_storage"] == IMAGE_STORAGE
+        if progress:
+            progress({"completed": episode_index, "total": len(checked), "episode": name,
+                      "phase": "copying" if native else "encoding_legacy"})
+        with tempfile.TemporaryDirectory(prefix=".export-work-", dir=destination) as temporary:
+            if native:
+                with h5py.File(path, "r") as file:
+                    bundle = native_root(file)
+                reused += 1
+            else:
+                bundle = Path(temporary) / "episode"
+                with h5py.File(path, "r") as file:
+                    writer = StreamingEpisode(bundle, config, str(file.attrs["task"]))
+                    try:
+                        for index in range(len(file["timestamp"])):
+                            if index % fps == 0 and shutil.disk_usage(destination).free < config["minimum_free_gb"] * 1e9:
+                                raise RuntimeError("disk space reserve reached; export kept incomplete")
+                            writer.append(file["state"][index], file["action"][index],
+                                          {role: read_rgb(file, role, index) for role in config["cameras"]})
+                        writer.finish({"source": path.name, "outcome": info["outcome"]})
+                    finally:
+                        writer.close()
+            original = LeRobotDatasetMetadata("local/recording", root=bundle)
+            table = pq.read_table(bundle / original.get_data_file_path(0))
+            task = info["task"]
+            if output.get_task_index(task) is None:
+                output.add_task(task)
+            changes = {"episode_index": np.full(table.num_rows, episode_index, dtype=np.int64),
+                       "index": np.arange(output.total_frames, output.total_frames + table.num_rows, dtype=np.int64),
+                       "task_index": np.full(table.num_rows, output.get_task_index(task), dtype=np.int64)}
+            for key, values in changes.items():
+                field = table.schema.field(key)
+                table = table.set_column(table.schema.get_field_index(key), field, pa.array(values, type=field.type))
+            data_path = destination / output.get_data_file_path(episode_index)
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            pq.write_table(table, data_path, compression="snappy")
+            stats = table_stats(table, output.features)
+            videos = {}
+            for role in config["cameras"]:
+                key = f"observation.images.{role}"
+                source = bundle / original.get_video_file_path(0, key)
+                relative = output.get_video_file_path(episode_index, key)
+                target = destination / relative
+                if shutil.disk_usage(destination).free < config["minimum_free_gb"] * 1e9 + source.stat().st_size:
+                    raise RuntimeError("disk space reserve reached; export kept incomplete")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, target)
+                if sha256(target) != sha256(source):
+                    raise RuntimeError(f"exported video checksum mismatch: {relative}")
+                videos[role] = str(relative)
+                stats[key] = copy.deepcopy(original.episodes_stats[0][key])
+            output.save_episode(episode_index, table.num_rows, [task], stats)
             sources.append({"name": name, "episode_index": episode_index, "source": path.name,
                             "fps": fps, "frames": info["frames"], "videos": videos,
-                            "parquet": str(dataset.meta.get_data_file_path(episode_index)),
-                            "sha256": digest, "review": info["review"], "quality": qc})
-    finally:
-        dataset.stop_image_writer()
+                            "parquet": str(output.get_data_file_path(episode_index)),
+                            "sha256": sha256(path), "review": info["review"], "quality": qc,
+                            "video_reused": native})
+            if progress:
+                progress({"completed": episode_index + 1, "total": len(checked), "episode": name, "phase": "copying"})
     # Validate files on disk before declaring the export complete.
     for source in sources:
         table = pq.read_table(destination / source["parquet"], columns=["episode_index"])
@@ -119,10 +139,11 @@ def export_dataset(root, destination, repo_id, *, allow_synthetic=False, episode
     parquet_files = len(list((destination / "data").rglob("*.parquet")))
     video_files = len(list((destination / "videos").rglob("*.mp4")))
     if (parquet_files != len(sources) or video_files != len(sources) * len(config["cameras"])
-            or dataset.meta.total_frames != sum(source["frames"] for source in sources)):
+            or output.total_frames != sum(source["frames"] for source in sources)):
         raise RuntimeError("exported file/frame counts do not match selected episodes")
-    report = {"repo_id": repo_id, "episodes": len(sources), "frames": dataset.meta.total_frames,
+    report = {"repo_id": repo_id, "episodes": len(sources), "frames": output.total_frames,
               "fps": fps, "image_storage": "video", "video_codec": "h264",
+              "reused_video_episodes": reused, "converted_legacy_episodes": len(sources) - reused,
               "parquet_files": parquet_files, "video_files": video_files,
               "lerobot_revision": LEROBOT_REVISION, "source_manifest": metadata, "sources": sources}
     (destination / "meta/nero_provenance.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
@@ -133,8 +154,9 @@ def export_dataset(root, destination, repo_id, *, allow_synthetic=False, episode
     marker.unlink()
     if progress:
         progress({"completed": len(sources), "total": len(sources), "episode": None})
-    return {"root": str(destination), "episodes": len(sources), "frames": dataset.meta.total_frames,
+    return {"root": str(destination), "episodes": len(sources), "frames": output.total_frames,
             "fps": fps, "image_storage": "video", "videos_root": str(destination / "videos"),
+            "reused_video_episodes": reused, "converted_legacy_episodes": len(sources) - reused,
             "parquet_files": parquet_files, "video_files": video_files,
             "files": [{key: source[key] for key in ("source", "name", "frames", "parquet", "videos")}
                       for source in sources],

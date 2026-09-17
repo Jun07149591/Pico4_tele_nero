@@ -8,6 +8,7 @@ import numpy as np
 
 from .eva_alignment import stream_stats
 from .storage import read_rgb
+from .lerobot_io import IMAGE_STORAGE, validate_video, verify_native
 
 
 def episode_path(root, identifier):
@@ -47,7 +48,8 @@ def summary(path):
                 "created_ns": int(file["wall_time_ns"][0]) if count else path.stat().st_mtime_ns,
                 "mode": str(file.attrs["mode"]), "reason": str(file.attrs.get("end_reason", "")),
                 "capture_gaps": len(file.get("capture_gaps", [])),
-                "cameras": list(file["images"]), "review": read_review(path)}
+                "image_storage": str(file.attrs.get("image_storage", "hdf5_jpeg")),
+                "cameras": list(file["image_timestamps"]), "review": read_review(path)}
 
 
 def list_episodes(root):
@@ -55,10 +57,11 @@ def list_episodes(root):
                   key=lambda info: (info["created_ns"], info["id"]))
 
 
-def validate_episode(path, metadata, *, decode_images=True):
+def validate_episode(path, metadata, *, decode_images=True, verify_hashes=None):
     issues = []
     config = metadata["config"]
     with h5py.File(path, "r") as file:
+        native = file.attrs.get("image_storage") == IMAGE_STORAGE
         times = file["monotonic"][:]
         fps = file.attrs["fps"]
         count = len(times)
@@ -89,8 +92,14 @@ def validate_episode(path, metadata, *, decode_images=True):
         if file["action_monotonic"].shape != times.shape or not np.array_equal(file["action_monotonic"][:], times):
             issues.append("action_time_mismatch")
         camera_times = []
+        if native and count:
+            try:
+                verify_native(file, metadata, hashes=decode_images if verify_hashes is None else verify_hashes)
+            except (ValueError, OSError, KeyError) as exc:
+                issues.append(f"invalid_native_episode:{exc}")
         for role in config["cameras"]:
-            if role not in file["images"] or len(file[f"images/{role}"]) != count:
+            if (role not in file["image_timestamps"]
+                    or (not native and (role not in file["images"] or len(file[f"images/{role}"]) != count))):
                 issues.append(f"missing_camera:{role}")
                 continue
             stamps = file[f"image_timestamps/{role}"][:]
@@ -103,6 +112,12 @@ def validate_episode(path, metadata, *, decode_images=True):
             if np.any(np.diff(stamps[:, 2]) <= 0):
                 issues.append(f"repeated_camera_frame:{role}")
             if decode_images:
+                if native:
+                    try:
+                        validate_video(file, role, config)
+                    except (ValueError, OSError) as exc:
+                        issues.append(f"invalid_video:{role}:{exc}")
+                    continue
                 for index in range(count):
                     try:
                         image = read_rgb(file, role, index)

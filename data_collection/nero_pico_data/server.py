@@ -15,6 +15,8 @@ import numpy as np
 
 from .export import export_dataset, select_episodes
 from .quality import episode_path, list_episodes, summary, validate_episode
+from .lerobot_io import IMAGE_STORAGE
+from .storage import read_rgb
 
 STATIC = Path(__file__).with_name("static")
 
@@ -74,7 +76,13 @@ def create_server(controller, port=8765):
                         with h5py.File(path, "r") as file:
                             if not 0 <= index < len(file["timestamp"]):
                                 raise ValueError("frame outside episode")
-                            image = np.asarray(file[f"images/{role}"][index]).tobytes()
+                            if file.attrs.get("image_storage") == IMAGE_STORAGE:
+                                ok, jpeg = cv2.imencode(".jpg", cv2.cvtColor(read_rgb(file, role, index), cv2.COLOR_RGB2BGR))
+                                if not ok:
+                                    raise ValueError("replay encoding failed")
+                                image = jpeg.tobytes()
+                            else:
+                                image = np.asarray(file[f"images/{role}"][index]).tobytes()
                     self.send(image, "image/jpeg")
                 elif parsed.path == "/api/preview":
                     role = params["role"]

@@ -217,7 +217,8 @@ function renderStatus() {
   renderExportSelection();
   if (state.export.state === 'running') {
     const progress = state.export.progress;
-    $('export-status').textContent = progress ? `正在导出 ${progress.completed} / ${progress.total}${progress.episode ? ` · ${progress.episode}` : ''}` : '正在导出…';
+    const phase = {validating: '正在校验', copying: '正在整理', encoding_legacy: '正在转换旧片段'}[progress?.phase] || '正在导出';
+    $('export-status').textContent = progress ? `${phase} ${progress.completed} / ${progress.total}${progress.episode ? ` · ${progress.episode}` : ''}` : '正在导出…';
   }
   if (state.export.state === 'error') $('export-status').textContent = `导出失败：${state.export.error}`;
   if (state.export.state === 'complete') {

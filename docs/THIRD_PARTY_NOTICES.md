@@ -15,7 +15,7 @@
 
 ## LeRobot / OpenPI / XRoboToolkit
 
-LeRobot、OpenPI 和 XRoboToolkit 是外部项目。LeRobot 固定 revision 写在 `data_collection/nero_pico_data/export.py`；OpenPI 不复制入仓库；XRoboToolkit 二进制由 `scripts/fetch_xr.py` 从上游 release 下载并校验 SHA-256。
+LeRobot、OpenPI 和 XRoboToolkit 是外部项目。LeRobot 固定 revision 写在 `data_collection/nero_pico_data/lerobot_io.py`，录制和导出共用；OpenPI 不复制入仓库；XRoboToolkit 二进制由 `scripts/fetch_xr.py` 从上游 release 下载并校验 SHA-256。
 
 ## 模型与坐标映射参考
 

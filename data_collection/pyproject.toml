@@ -7,7 +7,7 @@ name = "nero-pico-data"
 version = "0.1.0"
 description = "Synchronized Nero/PICO demonstrations and OpenPI pi0.5 dataset export"
 requires-python = ">=3.11"
-dependencies = ["numpy>=1.26", "h5py>=3.10", "opencv-python>=4.10", "pillow>=10", "pyrealsense2>=2.55"]
+dependencies = ["numpy>=1.26", "h5py>=3.10", "opencv-python>=4.10", "pillow>=10", "pyrealsense2>=2.55", "av>=14,<17", "pyarrow>=24"]
 
 [project.scripts]
 nero-data = "nero_pico_data.cli:main"

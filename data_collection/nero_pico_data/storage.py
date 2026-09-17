@@ -14,6 +14,7 @@ import h5py
 import numpy as np
 
 from .schema import manifest, validate_capture_fps, vector_names
+from .lerobot_io import IMAGE_STORAGE, StreamingEpisode, read_video_frame
 
 
 def _fixed_schema(metadata):
@@ -151,11 +152,17 @@ class DatasetStore:
             review = review_path(path)
             if review.is_symlink() or (review.exists() and not review.is_file()):
                 raise ValueError("invalid episode review file")
+            native = path.with_suffix("")
+            if native.is_symlink() or (native.exists() and not native.is_dir()):
+                raise ValueError("invalid native episode directory")
         # Preserve the high-water mark before removing the last numbered episode.
         _save_episode_number(self.root, _last_episode_number(self.root))
         deleted = []
         try:
             for path in paths:
+                native = path.with_suffix("")
+                if native.exists():
+                    shutil.rmtree(native)
                 path.unlink()
                 deleted.append(path.name)
                 review_path(path).unlink(missing_ok=True)
@@ -186,11 +193,15 @@ class EpisodeWriter:
         self.outcome, self.reason = None, ""
         self.final_gap = None
         ready = threading.Event()
+        cancelled = threading.Event()
 
         def run():
+            native = None
             try:
+                native = StreamingEpisode(self.partial.with_suffix(""), config, task)
                 with h5py.File(self.partial, "x") as file:
                     file.attrs.update(schema_version=1, task=task, outcome="inprogress", fps=config["fps"],
+                                      image_storage=IMAGE_STORAGE,
                                       mode=config["mode"], recording_policy="manual_finish",
                                       provenance=json.dumps({**provenance, "capture_fps": config["fps"]}, allow_nan=False))
                     dim = len(vector_names(config["mode"]))
@@ -202,8 +213,9 @@ class EpisodeWriter:
                     file.create_dataset("diagnostics", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype())
                     gaps = file.create_dataset("capture_gaps", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype())
                     for role in config["cameras"]:
-                        file.create_dataset(f"images/{role}", shape=(0,), maxshape=(None,), dtype=h5py.vlen_dtype(np.dtype("uint8")))
                         file.create_dataset(f"image_timestamps/{role}", shape=(0, 3), maxshape=(None, 3), dtype="f8")
+                    if cancelled.is_set():
+                        raise RuntimeError("episode writer initialization timed out")
                     ready.set()
                     count = 0
                     while (sample := self.queue.get()) is not None:
@@ -215,12 +227,9 @@ class EpisodeWriter:
                         values = {key: sample[key] for key in ("state", "action", "monotonic", "action_monotonic", "wall_time_ns")}
                         values["timestamp"] = count / config["fps"]
                         values["diagnostics"] = json.dumps(sample["diagnostics"], allow_nan=False)
+                        native.append(sample["state"], sample["action"],
+                                      {role: frame.rgb for role, frame in sample["images"].items()})
                         for role, frame in sample["images"].items():
-                            ok, encoded = cv2.imencode(".jpg", cv2.cvtColor(frame.rgb, cv2.COLOR_RGB2BGR),
-                                                       [cv2.IMWRITE_JPEG_QUALITY, config["jpeg_quality"]])
-                            if not ok:
-                                raise RuntimeError(f"image encoding failed: {role}")
-                            values[f"images/{role}"] = encoded
                             values[f"image_timestamps/{role}"] = [frame.monotonic, frame.device_timestamp_ms, frame.sequence]
                         for key, value in values.items():
                             file[key].resize(count + 1, axis=0)
@@ -232,8 +241,14 @@ class EpisodeWriter:
                         gaps.resize(len(gaps) + 1, axis=0)
                         gaps[-1] = json.dumps(self.final_gap, allow_nan=False)
                     file.attrs.update(outcome=self.outcome, end_reason=self.reason, frame_count=count)
+                    receipt = native.finish({"outcome": self.outcome, "end_reason": self.reason,
+                                             "capture_gaps": len(gaps), "quality_review_required": True,
+                                             "source": self.destination.name, "provenance": provenance})
+                    file.attrs["native_receipt_sha256"] = receipt
                     file.flush()
                     os.fsync(file.id.get_vfd_handle())
+                # The HDF5 index is the commit point visible to the collection UI.
+                os.rename(self.partial.with_suffix(""), self.destination.with_suffix(""))
                 os.rename(self.partial, self.destination)
                 directory_fd = os.open(self.destination.parent, os.O_RDONLY | os.O_DIRECTORY)
                 try:
@@ -243,12 +258,16 @@ class EpisodeWriter:
             except Exception as exc:
                 self.error = str(exc)
             finally:
+                if native is not None:
+                    native.close()
                 ready.set()
 
         self.worker = threading.Thread(target=run, name="data-writer", daemon=True)
         self.worker.start()
         ready.wait(timeout=10.)
         if not ready.is_set() or self.error:
+            cancelled.set()
+            self.queue.put_nowait(None)
             raise RuntimeError(self.error or "episode writer initialization timed out")
 
     def append(self, sample):
@@ -278,6 +297,8 @@ class EpisodeWriter:
 
 
 def read_rgb(file, role, index):
+    if file.attrs.get("image_storage") == IMAGE_STORAGE:
+        return read_video_frame(file, role, index)
     bgr = cv2.imdecode(np.asarray(file[f"images/{role}"][index]), cv2.IMREAD_COLOR)
     if bgr is None:
         raise ValueError(f"invalid JPEG: {role} frame {index}")

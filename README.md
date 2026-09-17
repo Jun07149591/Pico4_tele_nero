@@ -12,14 +12,14 @@ PICO 4 Ultra + XRoboToolkit 驱动 Nero 人形双臂的本地遥操与示范数�
 - D455 顶部相机和腕部相机同步采集，网页录制、回放、质检和导出。
 - 录制由用户手动结束，不限固定时长；B/Y 回位继续采集，数据暂时缺失时保留片段并记录缺帧。
 - 采集页支持空格开始录制及成功保存、L 失败保存；片段页支持勾选删除原始数据和质检记录。
-- 导出为 LeRobot v2.1 视频数据集：每个 episode 一个 Parquet，各相机一个 H.264 MP4，只使用 `videos/`，不生成重复的 `clips/`。
+- 录制时直接写 LeRobot v2.1 Parquet 和 H.264 MP4；勾选导出复用视频，只整理编号、任务和元数据，兼容旧 HDF5 片段，不生成重复的 `clips/`。
 
 ## 目录
 
 ```text
 pico4_tele_nero/
   teleop/                  # 遥操 Python 包、机器人配置、URDF、单元测试
-  data_collection/         # 采集网页、HDF5 存储、视频导出、OpenPI 适配
+  data_collection/         # 采集网页、LeRobot 流式存储、质检导出、OpenPI 适配
   vendor/pyAgxArm/         # Agilex SDK Python 源码（LGPL）
   vendor/xr-releases.json  # XRoboToolkit 固定版本下载地址和 SHA-256
   scripts/                 # 安装、启动、CAN、相机、测试入口
@@ -178,7 +178,9 @@ data/right_arm/exports/nero_pick_place_20260914T120000_000000/local/nero_pick_pl
   meta/nero_openpi.json
 ```
 
-网页会显示每个原始 HDF5 与 Parquet/MP4 的对应关系。官方 episode 索引从 `000000` 开始，两个片段应得到两个 Parquet 和每路相机各两个 MP4。将 `meta/nero_openpi.json` 传给 OpenPI 适配入口即可。
+新录制的每段在 `<root>/episodes/episode_01/` 下已经包含标准 LeRobot 的 `data/`、`videos/`、`meta/`；同名 `.h5` 仅保留时间对齐、关节、夹爪、缺帧和诊断，不再保存 JPEG。正常保存只需收尾，导出时直接复制现成视频，不再生成临时 PNG 或重新编码。旧 HDF5 仍可回放、质检和导出，旧视频转换也已去除临时 PNG 步骤。
+
+网页显示每个采集片段与导出 Parquet/MP4 的对应关系。官方 episode 索引从 `000000` 开始，两个片段应得到两个 Parquet 和每路相机各两个 MP4。将导出目录的 `meta/nero_openpi.json` 传给 OpenPI 适配入口即可。升级后重启采集服务生效，启动命令和录制快捷键不变；备份原始数据时须保留整个数据根目录。
 
 完整操作、按钮含义、保存/导出区别和常见问题见 [中文使用手册](docs/USAGE_ZH.md)。无需连接 PICO、机械臂或相机，可以先运行合成数据演示：
 
